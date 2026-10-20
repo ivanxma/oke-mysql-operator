@@ -16,7 +16,7 @@ instance**. Versions were checked against the official chart repository on
 
 ![Deployed OKE and MySQL architecture](docs/diagrams/deployment.png)
 
-[Editable deployment diagram](docs/diagrams/deployment.drawio)
+[Deployment diagram source](docs/diagrams/deployment.drawio)
 
 Both MySQL clusters currently run in **OKE c1**, in namespaces `mysql` and
 `mysql-secondary`. Each has three MySQL members and two Router pods; the
@@ -26,19 +26,31 @@ resources; MySQL Group Replication operates within each database cluster and
 asynchronous ClusterSet replication runs between them. Each MySQL member uses
 its own `oci-bv` PVC.
 
-OKE c2 shares the Frankfurt VCN and private subnet. Its access configuration
-uses `~/.kube/config2`, context `c2`. The `oke2/` access steps 01–03 configure access;
-they do not move the existing replica database from c1 to c2. Optional
-steps 04–07 add a third database cluster in c2. The diagram records the
-resolved CNI issue observed on 2026-10-20 after subnet expansion. The existing
-private administration path is outside the depicted Frankfurt network scope;
-the diagram does not assert a direct London–Frankfurt peering connection.
+OKE c2 shares the Frankfurt VCN and private subnet `10.21.148.0/24`.
+Its three workers are Ready and its separate MySQL Operator is Available.
+The diagram includes **`mysql-tertiary/mycluster3`**:
+three MySQL members (`mycluster3-0`, `mycluster3-1`, `mycluster3-2`), two Routers,
+three independent `oci-bv` PVCs requesting 10Gi each, and server IDs starting
+at 3000. OCI provisioned each c2 volume at **50Gi**. Cluster3 bootstrap was
+submitted on 2026-10-20; its three PVCs are Bound and pod initialization is
+in progress. Its Router Service ClusterIP is `10.96.98.211` inside c2.
+
+The [oke2 workflow](oke2/README.md#add-cluster3-in-oke-c2) adds cluster3 as a
+replica of the existing ClusterSet's current primary. Its namespace remains
+separate from the two c1 database namespaces. Both OKE clusters retain
+`cluster.local`; namespace-specific CoreDNS forwarding supplies member name
+resolution across clusters. The replica initiates TCP/3306 connections to the
+source, then receives its transaction stream. Verify the active source and
+read-only state with `oke2/07-verify-cluster3.sh`.
+
+Private management access uses the existing network path. Its shared transit
+topology is outside the diagram's Frankfurt network scope.
 
 ### Sample: a database cluster in each OKE cluster
 
 ![Cross-OKE ClusterSet reference sample](docs/diagrams/cross-oke-sample.png)
 
-[Editable cross-OKE sample](docs/diagrams/cross-oke-sample.drawio)
+[Cross-OKE sample source](docs/diagrams/cross-oke-sample.drawio)
 
 This is an illustrative layout with example CIDRs. The scripts do not provision
 these example networks. The [cluster3 workflow](oke2/README.md#add-cluster3-in-oke-c2)
