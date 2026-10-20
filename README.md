@@ -12,6 +12,13 @@ three MySQL instances, two Routers, and a **10Gi ReadWriteOnce PVC per MySQL
 instance**. Versions were checked against the official chart repository on
 2026-10-20. Review compatibility before changing versions together.
 
+## Networking guide
+
+For shared-VCN, same-region peering, and cross-region peering designs, see
+[Connecting two OKE clusters](docs/oke-networking.md). The guide includes OCI
+architecture diagrams and explicit commands for attachments, DRG/RPC routing,
+security rules, DNS forwarding, and connectivity checks.
+
 ## Deployment architecture
 
 ![Deployed OKE and MySQL architecture](docs/diagrams/deployment.png)

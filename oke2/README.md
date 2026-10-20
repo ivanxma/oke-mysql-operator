@@ -95,6 +95,10 @@ exhaustion message identifies address capacity as the cause. All three c2 worker
 NativePodNetworks reported `SUCCESS / COMPLETED`.
 See the [deployment and cross-OKE reference diagrams](../README.md#deployment-architecture).
 
+For VCN connectivity in the same region or across regions, use the
+[OKE networking guide](../docs/oke-networking.md), including diagrams and the
+OCI commands to build the private network path before deploying MySQL.
+
 ## Add cluster3 in OKE c2
 
 The target is **`mysql-tertiary/mycluster3` in OKE c2**, using
