@@ -31,9 +31,9 @@ Its three workers are Ready and its separate MySQL Operator is Available.
 The diagram includes **`mysql-tertiary/mycluster3`**:
 three MySQL members (`mycluster3-0`, `mycluster3-1`, `mycluster3-2`), two Routers,
 three independent `oci-bv` PVCs requesting 10Gi each, and server IDs starting
-at 3000. OCI provisioned each c2 volume at **50Gi**. Cluster3 bootstrap was
-submitted on 2026-10-20; its three PVCs are Bound and pod initialization is
-in progress. Its Router Service ClusterIP is `10.96.98.211` inside c2.
+at 3000. OCI provisioned each c2 volume at **50Gi**. Cluster3 was verified
+**ONLINE 3/3** on 2026-10-20, with ClusterSet **HEALTHY**, replica status **OK**,
+and all transactions applied. Its three PVCs are Bound. Its Router Service ClusterIP is `10.96.98.211` inside c2.
 
 The [oke2 workflow](oke2/README.md#add-cluster3-in-oke-c2) adds cluster3 as a
 replica of the existing ClusterSet's current primary. Its namespace remains

@@ -94,4 +94,30 @@ class Cluster3Tests(unittest.TestCase):
         os.environ['CLUSTER3_NAMESPACE']='kube-system'
         with self.assertRaisesRegex(c3.Error,'dedicated'):c3.config()
 
+    def receiver_status(self, primary=0):
+        endpoints=[f'mycluster3-{i}.mycluster3-instances.mysql-tertiary.svc.cluster.local:3306' for i in range(3)]
+        return {'clusterRole':'REPLICA','clusterSetReplication':{'receiver':endpoints[primary]},
+                'topology':{ep:{'address':ep,'status':'ONLINE','memberRole':'PRIMARY' if i==primary else 'SECONDARY'}
+                            for i,ep in enumerate(endpoints)}}
+
+    def test_replica_receiver_without_top_level_primary(self):
+        member=self.receiver_status()
+        self.assertNotIn('primary',member)
+        self.assertEqual(c3.replication_receiver(member,'mycluster3'),'mycluster3-0')
+
+    def test_replica_receiver_follows_primary_member_change(self):
+        self.assertEqual(c3.replication_receiver(self.receiver_status(2),'mycluster3'),'mycluster3-2')
+
+    def test_replica_receiver_falls_back_to_group_topology(self):
+        member=self.receiver_status(1);del member['clusterSetReplication']
+        self.assertEqual(c3.replication_receiver(member,'mycluster3'),'mycluster3-1')
+
+    def test_stale_receiver_and_ambiguous_topology_rejected(self):
+        member=self.receiver_status(1)
+        member['clusterSetReplication']['receiver']=next(iter(member['topology']))
+        with self.assertRaisesRegex(c3.Error,'disagree'):c3.replication_receiver(member,'mycluster3')
+        member=self.receiver_status()
+        for details in member['topology'].values():details['memberRole']='SECONDARY'
+        with self.assertRaisesRegex(c3.Error,'exactly one'):c3.replication_receiver(member,'mycluster3')
+
 if __name__=='__main__':unittest.main()

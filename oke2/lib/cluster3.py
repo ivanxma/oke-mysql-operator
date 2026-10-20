@@ -181,6 +181,21 @@ def member_targets(live):
     need(targets,'ClusterSet has no member endpoints.')
     return targets
 
+def replication_receiver(member, cluster_name):
+    # Replica entries omit the top-level 'primary' in extended ClusterSet status.
+    # Their receiver is reported in clusterSetReplication; validate it against
+    # the group topology so a stale or ambiguous status cannot select a secondary.
+    topology={details.get('address',endpoint):details
+              for endpoint,details in member.get('topology',{}).items()}
+    primaries=[endpoint for endpoint,details in topology.items()
+               if details.get('status')=='ONLINE' and details.get('memberRole')=='PRIMARY']
+    need(len(primaries)==1,'Expected exactly one ONLINE group primary for the replica receiver.')
+    endpoint=member.get('clusterSetReplication',{}).get('receiver') or primaries[0]
+    need(endpoint==primaries[0],'Replication receiver and ONLINE group primary disagree; retry after topology converges.')
+    match=re.fullmatch(re.escape(cluster_name)+r'-([0-8])\.[a-z0-9.-]+:3306',endpoint)
+    need(match is not None,'Replica receiver is not a default operator member FQDN: '+endpoint)
+    return cluster_name+'-'+match.group(1)
+
 def probe(which, ns, pod, targets, timeout=60):
     code='import socket,json\nchecks='+repr(targets)+'\n'
     code+="for endpoint,expected in checks.items():\n h,p=endpoint.rsplit(':',1); actual=socket.gethostbyname(h)\n if expected and actual!=expected: raise RuntimeError('DNS points to wrong pod: '+h+' '+actual)\n with socket.create_connection((h,int(p)),5): pass\n print(h+' -> '+actual+' TCP/'+p+' OK')\n"
@@ -294,7 +309,7 @@ def verify():
         if any(c['name']=='sidecar' for c in pod['spec']['containers']):
             code='import socket\nchecks='+repr(targets)+"\nfor ep,expected in checks.items():\n h,p=ep.rsplit(':',1);actual=socket.gethostbyname(h)\n if actual!=expected: raise RuntimeError('Incorrect remote DNS: '+h)\n with socket.create_connection((h,int(p)),5):pass\n print(ep+' -> '+actual+' OK')\n"
             print(k(1,'--request-timeout=0','-n',pod['metadata']['namespace'],'exec',pod['metadata']['name'],'-c','sidecar','--','mysqlsh','--py','-e',code),flush=True)
-    receiver=member['primary'].split('.',1)[0]
+    receiver=replication_receiver(member,rc)
     query="SELECT c.HOST,c.PORT,s.SERVICE_STATE,s.SOURCE_UUID,s.LAST_ERROR_NUMBER,s.LAST_ERROR_MESSAGE,a.SERVICE_STATE FROM performance_schema.replication_connection_configuration c LEFT JOIN performance_schema.replication_connection_status s USING (CHANNEL_NAME) LEFT JOIN performance_schema.replication_applier_status a USING (CHANNEL_NAME) WHERE c.CHANNEL_NAME='clusterset_replication'"
     channels=shell(2,replica,data,"rows=shell.get_session().run_sql("+repr(query)+").fetch_all(); print('CLUSTER3_JSON='+json.dumps([list(r) for r in rows]))",pod=receiver)
     need(len(channels)==1 and channels[0][2]=='ON' and channels[0][4]==0 and channels[0][6]=='ON', 'cluster3 replication receiver/applier is not running cleanly: '+json.dumps(channels))
