@@ -34,6 +34,63 @@ class OperationTests(unittest.TestCase):
         plan = op.plan_operation("toggle", self.pair, self.status, 120)
         self.assertEqual(plan["targetCluster"], "mycluster")
 
+    def three_cluster_status(self, primary="mycluster"):
+        status = copy.deepcopy(self.status)
+        status["clusters"]["mycluster3"] = copy.deepcopy(status["clusters"]["mycluster2"])
+        status["primaryCluster"] = primary
+        for name, member in status["clusters"].items():
+            member["clusterRole"] = "PRIMARY" if name == primary else "REPLICA"
+        return status
+
+    def test_cycle_all_three_directions(self):
+        for current, target in (("mycluster", "mycluster2"), ("mycluster2", "mycluster3"), ("mycluster3", "mycluster")):
+            with self.subTest(current=current):
+                status = self.three_cluster_status(current)
+                op.validate_health(status, self.pair, allowed_primary=status["clusters"])
+                plan = op.plan_operation("toggle", self.pair, status, 120)
+                self.assertEqual(plan["targetCluster"], target)
+
+    def test_numeric_targets_from_any_primary(self):
+        for current in ("mycluster", "mycluster2", "mycluster3"):
+            for number, target in enumerate(("mycluster", "mycluster2", "mycluster3"), 1):
+                with self.subTest(current=current, number=number):
+                    plan = op.plan_operation("toggle", self.pair, self.three_cluster_status(current), 120, target=str(number))
+                    self.assertEqual(plan["targetCluster"], target)
+
+    def test_missing_or_invalid_target_refused(self):
+        with self.assertRaisesRegex(op.cs.SetupError, "not a registered"):
+            op.plan_operation("toggle", self.pair, self.status, 120, target="3")
+        with self.assertRaisesRegex(op.cs.SetupError, "1, 2 or 3"):
+            op.plan_operation("toggle", self.pair, self.status, 120, target="4")
+
+    def test_already_primary_does_not_submit_mutation(self):
+        with patch.object(op, "operation_lock", return_value=nullcontext()), \
+                patch.object(op, "load_pair", return_value=(self.pair, self.status)), \
+                patch.object(op, "run_shell") as run, redirect_stdout(io.StringIO()) as output:
+            op.execute("toggle", argparse.Namespace(timeout=120, dry_run=False, target="1"))
+            run.assert_not_called()
+            self.assertIn("already primary", output.getvalue())
+
+    def test_switch_back_from_cluster3_uses_c1_anchor_once(self):
+        status = self.three_cluster_status("mycluster3")
+        result = self.three_cluster_status("mycluster")
+        pair = copy.deepcopy(self.pair)
+        for value in pair.values():value["data"] = {"rootPassword":"unused-test-data"}
+        with patch.object(op, "operation_lock", return_value=nullcontext()), \
+                patch.object(op, "load_pair", return_value=(pair, status)), \
+                patch.object(op, "run_shell", return_value=result) as run, redirect_stdout(io.StringIO()):
+            op.execute("toggle", argparse.Namespace(timeout=120, dry_run=False, target=None))
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[:2], ("mysql", "mycluster-0"))
+            self.assertIn("set_primary_cluster", run.call_args.args[3])
+            self.assertNotIn("force_primary_cluster", run.call_args.args[3])
+
+    def test_third_unhealthy_blocks_explicit_target(self):
+        status = self.three_cluster_status()
+        status["clusters"]["mycluster3"]["globalStatus"] = "NOT_OK"
+        with self.assertRaisesRegex(op.cs.SetupError, "globally OK"):
+            op.validate_health(status, self.pair, allowed_primary=status["clusters"])
+
     def test_first_secondary_is_lowest_ordinal_excluding_primary(self):
         plan = op.plan_operation("rotate", self.pair, self.status, 120)
         self.assertEqual(plan["targetInstance"], "mycluster-1.example:3306")

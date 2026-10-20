@@ -197,12 +197,18 @@ progress; use c2 operator and sidecar logs if it does not become ONLINE:
 ./kubectl.sh -n mysql-tertiary logs mycluster3-0 -c sidecar --tail=100
 ```
 
-Root script **31** continues to toggle the configured c1 pair (`mycluster`
-and `mycluster2`); additional healthy replicas such as cluster3 are retained and
-follow the new primary through ClusterSet. Script **32** rotates the primary
-member in that pair's current primary cluster. Both require all ClusterSet
-members to be healthy and refuse if the primary cluster is outside the
-configured pair. They do not select cluster3 as a switchover target.
+Root script **31** cycles **mycluster → mycluster2 → mycluster3 → mycluster**
+when run without an argument. Use `./31-toggle-clusterset-primary.sh 1`, `2`,
+or `3` from the repository root to select a primary directly. Add `--dry-run`
+to preview it. Selecting the current primary leaves the topology unchanged.
+All ClusterSet members must be healthy. Step 31 can switch back from cluster3
+through a c1 MySQL session, so the cross-OKE DNS and member connectivity must
+remain available.
+
+Script **32** still rotates the primary member only when the ClusterSet primary
+is in the c1 pair; it refuses when cluster3 is primary. Step 07 verifies that
+cluster3 is a **replica**, so it is not a primary-health check after promoting
+cluster3. Inspect ClusterSet status through MySQL Shell for that case.
 
 Root script **33** inspects the configured c1 pair; it does not scan c2. Use
 step 07 for the three-cluster ClusterSet status and cluster3's active replication

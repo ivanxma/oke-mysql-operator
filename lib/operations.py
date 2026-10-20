@@ -43,8 +43,14 @@ def run_shell(namespace, pod, data, body, timeout=90):
     return json.JSONDecoder().raw_decode(output.split(marker, 1)[1])[0]
 
 
-def load_pair(healthy=True):
+def load_pair(healthy=True, allow_third=False):
     pair = {}
+    allowed = set(endpoints())
+    if allow_third:
+        third = os.environ.get("CLUSTER3_NAME", "mycluster3")
+        cs.require(len(third) <= 40 and re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", third), "Invalid CLUSTER3_NAME.")
+        cs.require(canonical(third) not in allowed, "CLUSTER3_NAME must differ from the configured c1 pair.")
+        allowed.add(canonical(third))
     for key, (namespace, name) in endpoints().items():
         cluster = cs.get("innodbcluster", name, namespace)
         data = cs.credentials(cluster)
@@ -53,21 +59,21 @@ def load_pair(healthy=True):
             state = cluster.get("status", {}).get("cluster", {})
             cs.require(state.get("status") == "ONLINE" and state.get("onlineInstances") == cluster["spec"]["instances"],
                        f"{namespace}/{name} does not have all configured members ONLINE.")
-            validate_health(status["clusterSet"], endpoints())
+            validate_health(status["clusterSet"], endpoints(), allowed_primary=allowed)
         pair[key] = {"namespace": namespace, "name": name, "data": data, "status": status}
     statuses = [v["status"]["clusterSet"] for v in pair.values()]
     cs.require(len({s["domainName"] for s in statuses}) == 1 and len({s.get("primaryCluster") for s in statuses}) == 1,
                "The two clusters disagree on ClusterSet identity or primary. Retry after topology converges.")
-    cs.require(statuses[0].get("primaryCluster") in pair, "Current primary is outside the configured pair.")
+    cs.require(statuses[0].get("primaryCluster") in allowed, "Current primary is outside the configured operation targets.")
     return pair, statuses[0]
 
 
-def validate_health(status, expected):
+def validate_health(status, expected, allowed_primary=None):
     cs.require(status.get("status") == "HEALTHY", "ClusterSet must be HEALTHY before a planned switchover.")
     members = status.get("clusters", {})
     cs.require(set(expected).issubset(members), "ClusterSet is missing a configured member of the toggle pair.")
     primary = status.get("primaryCluster")
-    cs.require(primary in expected, "ClusterSet primary is not in the configured pair.")
+    cs.require(primary in (allowed_primary if allowed_primary is not None else expected), "ClusterSet primary is not in the configured pair or allowed targets.")
     for name, member in members.items():
         cs.require(member.get("globalStatus") == "OK", f"ClusterSet member {name} is not globally OK.")
         cs.require(member.get("clusterRole") == ("PRIMARY" if name == primary else "REPLICA"),
@@ -87,12 +93,22 @@ def select_secondary(topology, cluster_name):
     return min(candidates)[1]
 
 
-def plan_operation(operation, pair, status, timeout):
+def plan_operation(operation, pair, status, timeout, target=None):
     current = status["primaryCluster"]
     plan = {"operation": operation, "domainName": status["domainName"],
             "currentPrimaryCluster": current, "timeout": timeout}
     if operation == "toggle":
-        plan["targetCluster"] = next(name for name in pair if name != current)
+        names = list(pair)
+        choices = {"1": names[0], "2": names[1], "3": canonical(os.environ.get("CLUSTER3_NAME", "mycluster3"))}
+        if target is not None:
+            cs.require(str(target) in choices, "Target must be 1, 2 or 3.")
+            selected = choices[str(target)]
+            cs.require(selected in status["clusters"], "Selected cluster is not a registered ClusterSet member: " + selected)
+        else:
+            cycle = [name for name in choices.values() if name in status["clusters"]]
+            cs.require(current in cycle, "Current primary is outside the configured cycle.")
+            selected = cycle[(cycle.index(current) + 1) % len(cycle)]
+        plan["targetCluster"] = selected
     else:
         member = status["clusters"][current]
         plan["currentPrimaryInstance"] = member["primary"]
@@ -140,20 +156,26 @@ def switched(status, plan):
         old = status.get("clusters", {}).get(plan["currentPrimaryCluster"], {})
         new = status.get("clusters", {}).get(plan["targetCluster"], {})
         return (status.get("primaryCluster") == plan["targetCluster"] and new.get("clusterRole") == "PRIMARY"
-                and old.get("clusterRole") == "REPLICA" and all(v.get("globalStatus") == "OK" for v in (old, new)))
+                and old.get("clusterRole") == "REPLICA" and all(v.get("globalStatus") == "OK" for v in status.get("clusters", {}).values()))
     return (status.get("primaryCluster") == plan["currentPrimaryCluster"] and
             status.get("clusters", {}).get(plan["currentPrimaryCluster"], {}).get("primary") == plan["targetInstance"])
 
 
 def execute(operation, args):
     with operation_lock():
-        pair, status = load_pair()
-        plan = plan_operation(operation, pair, status, args.timeout)
+        pair, status = load_pair(allow_third=operation == "toggle")
+        plan = plan_operation(operation, pair, status, args.timeout, target=getattr(args, "target", None))
         print(json.dumps(plan, indent=2), flush=True)
         if args.dry_run:
             print("Preview only: topology read; no AdminAPI change submitted.")
             return
-        source = pair[plan["currentPrimaryCluster"]]
+        if operation == "toggle" and plan["targetCluster"] == plan["currentPrimaryCluster"]:
+            print("Selected cluster is already primary; no change submitted.")
+            return
+        # ClusterSet AdminAPI accepts a session on any member, including a c1
+        # replica while c2's cluster3 is primary. DNS/routing supplies the remote
+        # MySQL path, so switching back does not require changing kubeconfig.
+        source = pair.get(plan["currentPrimaryCluster"], next(iter(pair.values())))
         print("Submitting one planned AdminAPI switchover; waiting for completion...", flush=True)
         # Never retry this mutation: a timeout can mean its outcome is unknown.
         result = run_shell(source["namespace"], source["name"] + "-0", source["data"],
@@ -165,7 +187,7 @@ def execute(operation, args):
             result = cs.admin_status(source["namespace"], source["name"], source["data"])["clusterSet"]
         print("Verified: " + json.dumps({"primaryCluster": result["primaryCluster"],
               "primaryInstance": result["clusters"][result["primaryCluster"]]["primary"], "status": result["status"]}), flush=True)
-        print("Run ./33-replication-channel-status.sh to inspect actual channel sources after reconnection.")
+        print("Run ./33-replication-channel-status.sh for c1 channel sources. For c2, inspect ClusterSet status through MySQL Shell.")
 
 
 SNAPSHOT_CODE = '''
@@ -277,12 +299,15 @@ def print_channels(report):
 def main():
     parser = argparse.ArgumentParser(description="ClusterSet planned operations and channel monitoring.")
     parser.add_argument("operation", choices=("toggle", "rotate", "channels"))
+    parser.add_argument("target", nargs="?", choices=("1", "2", "3"),
+                        help="Step 31: select 1=mycluster, 2=mycluster2, 3=mycluster3. Omit to cycle through registered targets.")
     parser.add_argument("--dry-run", action="store_true", help="Preview 31/32 selection without changes.")
     parser.add_argument("--timeout", type=int, default=120, help="Switchover synchronization/transaction wait in seconds (default: 120).")
     parser.add_argument("--watch", action="store_true", help="Repeat read-only channel snapshots until Ctrl-C.")
     parser.add_argument("--interval", type=int, default=5, help="Seconds between completed snapshots (default: 5).")
     parser.add_argument("--json", action="store_true", help="Print complete channel snapshots as JSON (one per watch iteration).")
     args = parser.parse_args()
+    cs.require(args.target is None or args.operation == "toggle", "A numeric target applies to step 31 only.")
     cs.settings()
     cs.require(1 <= args.timeout <= 3600 and 1 <= args.interval <= 3600, "Timeout and interval must be from 1 to 3600 seconds.")
     if args.operation == "channels":

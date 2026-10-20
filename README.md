@@ -432,15 +432,22 @@ use steps 31-33 for operations after role changes.
 
 | Script | Operation |
 | --- | --- |
-| `31-toggle-clusterset-primary.sh` | Detects which of the two clusters is currently primary and switches the primary role to the other cluster. Each successful invocation toggles the direction. |
+| `31-toggle-clusterset-primary.sh [NUMBER]` | With no argument, cycles mycluster → mycluster2 → mycluster3 → mycluster. A number selects that primary directly. Selecting the current primary makes no change. |
 | `32-rotate-primary-node.sh` | Detects the current primary cluster, selects its ONLINE secondary member with the lowest numeric pod ordinal, and elects that member as the new primary node. The ClusterSet primary cluster stays the same. |
 | `33-replication-channel-status.sh` | Queries every member of both clusters for asynchronous channel status, actual source identity, group roles, and automatic connection-failover candidates. Read-only. |
 
 Preview the selected target before an operation, or run the script directly:
 
 ```bash
+# Preview the next target, then advance one place in the cycle:
 ./31-toggle-clusterset-primary.sh --dry-run
 ./31-toggle-clusterset-primary.sh
+
+# Or select a specific primary cluster:
+./31-toggle-clusterset-primary.sh 1           # mycluster
+./31-toggle-clusterset-primary.sh 2           # mycluster2
+./31-toggle-clusterset-primary.sh 3 --dry-run # preview mycluster3
+./31-toggle-clusterset-primary.sh 3           # mycluster3 (OKE c2)
 
 ./32-rotate-primary-node.sh --dry-run
 ./32-rotate-primary-node.sh
@@ -448,13 +455,28 @@ Preview the selected target before an operation, or run the script directly:
 
 Steps 31/32 require both configured clusters to be fully ONLINE and the
 entire ClusterSet to be HEALTHY, including any additional replicas. The
-primary must remain within the configured c1 pair. They recheck live roles immediately before
+primary for step 31 can be any of the three configured targets. Step 32 still
+requires the primary to be in the c1 pair. They recheck live roles immediately before
 submitting one AdminAPI operation. Step 31 calls `set_primary_cluster()` for a
 controlled switchover; it synchronizes the target and demotes the original
 primary to a replica. Step 32 calls `set_primary_instance()` within the live
 primary cluster. For example, if pod `-0` is PRIMARY, step 32 selects ONLINE
 secondary `-1`; on the next run it normally selects `-0` if that pod is now the
 first ONLINE secondary. Pod ordinals do not permanently define database roles.
+
+Step 31 maps `1` and `2` to the original/replica names in `clusterset.env`;
+`3` uses `CLUSTER3_NAME` from `oke2/cluster3.env` (default `mycluster3`). The
+no-argument cycle includes the registered targets in that order. For an older
+two-cluster setup where cluster3 has not joined yet, it continues to cycle
+between the first two; explicitly selecting an unregistered target fails.
+
+Step 31 runs ClusterSet AdminAPI from an existing c1 sidecar, which can manage
+the ClusterSet through any member. It therefore supports switching **back from
+mycluster3** without changing the Kubernetes context or using c2's API. All
+advertised member endpoints must remain reachable and resolvable from c1,
+including the `mysql-tertiary.svc.cluster.local` DNS forwarding path. The other
+two clusters become/remain replicas of the selected primary. No forced failover
+or automatic invalidation is used.
 
 `--timeout 120` is the default synchronization wait for step 31 and the
 `runningTransactionsTimeout` for step 32. For step 32, MySQL can roll back
