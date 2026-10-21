@@ -119,3 +119,5 @@ single VM boot/join test. Pool scaling does not supply Machine API integration,
 CSR approval, safe drain, or Kubernetes node deletion for `platform: none`.
 Adding workers does not provide control-plane HA. Worker image import is verified;
 worker VM boot/join and pool lifecycle remain separate acceptance tests.
+
+For MySQL on the installed cluster, see [MySQL Operator / ClusterSet on OKD](../mysql-operator/README.md).

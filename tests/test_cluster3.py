@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
@@ -17,9 +18,12 @@ import cluster3 as c3
 
 class Cluster3Tests(unittest.TestCase):
     def setUp(self):
+        directory=tempfile.TemporaryDirectory();self.addCleanup(directory.cleanup)
+        self.kube_primary=str(Path(directory.name)/"primary-config")
+        self.kube_secondary=str(Path(directory.name)/"secondary-config")
         proc=subprocess.run(['bash','-c','source lib/common.sh; python3 -c "import os,json; print(json.dumps(dict(os.environ)))"'],cwd=ROOT,env={**os.environ,'MYSQLK8S_CONFIG':'/nonexistent'},text=True,capture_output=True,check=True)
         env=json.loads(proc.stdout)
-        env.update(C1_CONTEXT='c1',C2_CONTEXT='c2',C1_KUBECONFIG='/home/opc/.kube/config',C2_KUBECONFIG='/home/opc/.kube/config2',
+        env.update(C1_CONTEXT='c1',C2_CONTEXT='c2',C1_KUBECONFIG=self.kube_primary,C2_KUBECONFIG=self.kube_secondary,
                    C1_SOURCE_CLUSTER='mycluster',C1_SOURCE_NAMESPACE='mysql',CLUSTER3_NAME='mycluster3',CLUSTER3_NAMESPACE='mysql-tertiary',
                    CLUSTER3_SECRET='mycluster3-root',CLUSTER3_BASE_SERVER_ID='3000',CLUSTER3_INSTANCES='3',CLUSTER3_ROUTERS='2',
                    CLUSTER3_STORAGE_CLASS='oci-bv',CLUSTER3_STORAGE_SIZE='10Gi',K8S_CLUSTER_DOMAIN='cluster.local',C1_DNS_SERVERS='',C2_DNS_SERVERS='')
@@ -30,7 +34,7 @@ class Cluster3Tests(unittest.TestCase):
     def test_kubectl_uses_explicit_file_and_context(self):
         with patch.object(c3.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'{}','')) as run:
             c3.k(2,'get','pods',obj=True)
-        self.assertEqual(run.call_args.args[0][:5],['kubectl','--kubeconfig','/home/opc/.kube/config2','--context','c2'])
+        self.assertEqual(run.call_args.args[0][:5],['kubectl','--kubeconfig',self.kube_secondary,'--context','c2'])
 
     def test_same_api_rejected_before_mutation(self):
         def fake(which,*args,**kw):
@@ -62,9 +66,9 @@ class Cluster3Tests(unittest.TestCase):
         self.assertIn('--passwords-from-stdin',k.call_args.args)
 
     def test_namespace_forwarding_is_specific_and_deterministic(self):
-        text=c3.forwarding({'mysql-secondary.svc.cluster.local','mysql.svc.cluster.local'},['10.60.10.20','10.60.10.21'])
+        text=c3.forwarding({'mysql-secondary.svc.cluster.local','mysql.svc.cluster.local'},['192.0.2.20','192.0.2.21'])
         self.assertIn('mysql.svc.cluster.local:53 {',text)
-        self.assertIn('forward . 10.60.10.20 10.60.10.21',text)
+        self.assertIn('forward . 192.0.2.20 192.0.2.21',text)
         self.assertNotIn('\ncluster.local:53',text)
         self.assertNotIn('kube-system',text)
 

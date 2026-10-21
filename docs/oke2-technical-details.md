@@ -73,7 +73,7 @@ local configuration and kubeconfig files out of source control.
 
 ## CNI and subnet capacity
 
-Both OKE clusters share `10.60.10.0/24`. The subnet was expanded from `/25`
+Both OKE clusters share `<WORKER_POD_SUBNET_CIDR>`. The subnet was expanded from `/25`
 after c2 exhausted all 125 usable addresses during CNI initialization.
 The UDP/53 security rule now also allows sources from `/24`. These are separate
 settings: a DNS rule cannot create additional subnet IP addresses.
@@ -105,7 +105,7 @@ ClusterSet as a **REPLICA**; it does not create another independent ClusterSet.
 Its source is the current ClusterSet primary, including after a switch between
 mycluster and mycluster2.
 
-Run these scripts from `/home/opc/mysqlk8s/oke2`:
+Run these scripts from the `oke2/` directory in your repository checkout:
 
 [Cluster3 installation commands](../oke2/README.md#add-cluster3-in-oke-c2)
 
@@ -140,7 +140,7 @@ endpoints that point to the same Kubernetes cluster.
 ### DNS and network requirements
 
 The observed c1 and c2 use VCN-native pod networking in the shared private
-subnet **`10.60.10.0/24`**. Both use `cluster.local`, so forwarding that whole
+subnet **`<WORKER_POD_SUBNET_CIDR>`**. Both use `cluster.local`, so forwarding that whole
 zone would redirect local Kubernetes service lookups. Instead step 05 forwards:
 
 - From c2 to c1: the namespaces containing c1 InnoDBClusters, currently

@@ -31,14 +31,14 @@ resources; MySQL Group Replication operates within each database cluster and
 asynchronous ClusterSet replication runs between them. Each MySQL member uses
 its own `oci-bv` PVC.
 
-OKE c2 shares the Frankfurt VCN and private subnet `10.60.10.0/24`.
+OKE c2 shares the Frankfurt VCN and private subnet `<WORKER_POD_SUBNET_CIDR>`.
 Its three workers are Ready and its separate MySQL Operator is Available.
 The diagram includes **`mysql-tertiary/mycluster3`**:
 three MySQL members (`mycluster3-0`, `mycluster3-1`, `mycluster3-2`), two Routers,
 three independent `oci-bv` PVCs requesting 10Gi each, and server IDs starting
 at 3000. OCI provisioned each c2 volume at **50Gi**. Cluster3 was verified
 **ONLINE 3/3** on 2026-10-20, with ClusterSet **HEALTHY**, replica status **OK**,
-and all transactions applied. Its three PVCs are Bound. Its Router Service ClusterIP is `10.96.98.211` inside c2.
+and all transactions applied. Its three PVCs are Bound. Its Router Service ClusterIP is `<MYSQL_ROUTER_CLUSTER_IP>` inside c2.
 
 The [oke2 workflow](../oke2/README.md#add-cluster3-in-oke-c2) adds cluster3 as a
 replica of the existing ClusterSet's current primary. Its namespace remains
@@ -112,7 +112,7 @@ rules, including required ICMP traffic, from the linked baseline.
 
 ### Required DNS rule for this environment
 
-The worker and pod subnet is `10.60.10.0/24`. In the OCI Console, open that
+The worker and pod subnet is `<WORKER_POD_SUBNET_CIDR>`. In the OCI Console, open that
 subnet's security list, or an NSG applied to the CoreDNS pod VNICs, and ensure
 these **ingress** settings are present:
 
@@ -120,20 +120,20 @@ these **ingress** settings are present:
 | --- | --- | --- |
 | Stateless | No (stateful) | No (stateful) |
 | Source type | CIDR | CIDR |
-| Source CIDR | `10.60.10.0/24` | `10.60.10.0/24` |
+| Source CIDR | `<WORKER_POD_SUBNET_CIDR>` | `<WORKER_POD_SUBNET_CIDR>` |
 | IP protocol | UDP (17) | TCP (6) |
 | Source port range | All | All |
 | Destination port range | `53` | `53` |
 
 An existing rule covering the same traffic is sufficient. In this deployment,
-TCP was already allowed; adding **UDP/53 from `10.60.10.0/24`** resolved the
+TCP was already allowed; adding **UDP/53 from `<WORKER_POD_SUBNET_CIDR>`** resolved the
 operator startup failure. If workers and pods use separate subnets, use their
 actual source CIDRs and apply the rules to the subnet/NSG receiving DNS traffic.
 Allow DNS egress from the clients and CoreDNS forwarding to its upstream
 resolver as well. Apply equivalent permissions if Kubernetes NetworkPolicies
 restrict DNS traffic.
 
-The DNS Service here is `10.96.5.5`, but VCN-native traffic ultimately reaches
+The DNS Service here is `<DNS_SERVICE_CLUSTER_IP>`, but VCN-native traffic ultimately reaches
 the CoreDNS **pod IPs**. Base OCI rules on the actual pod/worker subnets or NSGs,
 and allow communication across workers. Verify the current DNS endpoints with:
 
@@ -157,7 +157,7 @@ kubectl -n mysql-operator exec deployment/mysql-operator -- \
 ### Shared subnet capacity and NotReady workers
 
 The shared API/worker/pod subnet was expanded from `/25` to
-**`10.60.10.0/24`** on 2026-10-20. The second cluster's CNI reported
+**`<WORKER_POD_SUBNET_CIDR>`** on 2026-10-20. The second cluster's CNI reported
 `FailedToCreatePrivateIP` / `FailedToAttachVNIC`, explicitly stating that all
 **125 non-reserved addresses** in the former `/25` were allocated. OCI inventory
 confirmed 125 allocated IPs (14 primary and 111 secondary) at diagnosis.
@@ -583,7 +583,7 @@ change the local port. From your laptop, keep step 08 running on the VM and add
 an SSH tunnel in another laptop terminal:
 
 ```bash
-ssh -i "$SSH_IDENTITY" -N -L 13306:127.0.0.1:3306 opc@192.0.2.10
+ssh -i "$SSH_IDENTITY" -N -L 13306:127.0.0.1:3306 "$SSH_USER@$SSH_HOST"
 mysql -h 127.0.0.1 -P 13306 -u root -p
 ```
 

@@ -1,0 +1,5 @@
+config.env
+*.env
+!*.env.example
+.state/
+generated/

@@ -199,14 +199,14 @@ def check():
     return primary, doc, data, existing
 
 
-def create():
+def create(verify_script="13-verify-clusterset.sh"):
     primary, doc, data, existing = check()
     pn, pc, rn, rc, secret = settings()
     if existing:
         saved_secret = get("secret", secret, rn, optional=True)
         require(saved_secret and saved_secret.get("data") == data,
                 "Replica exists but its original credentials are missing or differ. Restore them before continuing.")
-        print("Replica CR already matches. Run step 13 to verify; no resources changed.")
+        print(f"Replica CR already matches. Run {verify_script}; no resources changed.")
         return
     if not get("namespace", rn, optional=True):
         kubectl("create", "namespace", rn)
@@ -231,7 +231,7 @@ def create():
     path.write_text(rendered)
     path.chmod(0o600)
     kubectl("create", "-f", "-", payload=rendered)
-    print(f"Replica bootstrap submitted. Manifest: {path}. Run 13-verify-clusterset.sh.")
+    print(f"Replica bootstrap submitted. Manifest: {path}. Run {verify_script}.")
 
 
 def diagnostics():

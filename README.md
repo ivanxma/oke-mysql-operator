@@ -14,6 +14,10 @@ For the separate SCOS single-node installation workflow, see
 Deployment-specific installation records and access details stay under the
 Git-ignored `internal_doc/` directory.
 
+For MySQL on that OKD cluster, use the numbered
+[OpenShift MySQL Operator and ClusterSet scripts](openshift/mysql-operator/README.md).
+They select labelled workers and keep database pods off the control plane.
+
 ## Prerequisites
 
 - A Linux 9 administration host: Oracle Linux, RHEL, Rocky Linux, or AlmaLinux.
@@ -42,7 +46,7 @@ kubectl get storageclasses
 
 ## Install the first MySQL cluster
 
-On the supplied VM, the project is `/home/opc/mysqlk8s`. Set `KUBE_CONTEXT` in
+Run these commands from your repository checkout. Set `KUBE_CONTEXT` in
 `config.env` to pin installation to the intended Kubernetes cluster.
 
 ```bash

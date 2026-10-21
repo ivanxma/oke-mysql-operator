@@ -41,17 +41,17 @@ do not advertise the service CIDR through a DRG. The existing clusters can both
 use their current service range because this design exchanges pod addresses,
 not ClusterIPs. Avoid overlapping service ranges in new designs where practical.
 
-## 2. Current deployment: both OKE clusters in one VCN
+## 2. Shared-VCN deployment pattern
 
 Deployment-specific architecture and live inventory are kept in the local private documentation.
 
 | Item | c1 | c2 |
 | --- | --- | --- |
 | Region | eu-frankfurt-1 | eu-frankfurt-1 |
-| VCN | example-vcn, 10.60.10.0/24 | Same VCN |
-| Shared private API/worker/pod subnet | 10.60.10.0/24 | Same subnet |
-| Private API | 10.60.10.9:6443 | 10.60.10.73:6443 |
-| Worker IPs | 10.60.10.3, .31, .61 | 10.60.10.27, .64, .70 |
+| VCN | example-vcn, `<WORKER_POD_SUBNET_CIDR>` | Same VCN |
+| Shared private API/worker/pod subnet | `<WORKER_POD_SUBNET_CIDR>` | Same subnet |
+| Private API | `<C1_API_HOST>`:6443 | `<C2_API_HOST>`:6443 |
+| Worker IPs | `<C1_WORKER_IPS>` | `<C2_WORKER_IPS>` |
 | MySQL namespaces | mysql; mysql-secondary | mysql-tertiary |
 | MySQL clusters | mycluster; mycluster2 | mycluster3 |
 | Kubeconfig | ~/.kube/config | ~/.kube/config2, context c2 |
@@ -62,7 +62,7 @@ For this lab, the changes that enabled communication were:
    usable IPs were exhausted during c2 CNI initialization. A `/24` provides
    **253** usable addresses in OCI. CNI preallocation, endpoints, and worker
    replacement all consume capacity beyond the currently running pod count.
-2. Allow **UDP/53 from 10.60.10.0/24**, in addition to TCP DNS and MySQL traffic.
+2. Allow **UDP/53 from `<WORKER_POD_SUBNET_CIDR>`**, in addition to TCP DNS and MySQL traffic.
    TCP traffic was already permitted by an existing broader lab rule.
 3. Forward the remote database namespaces through the opposite cluster's
    CoreDNS pods, in both directions. VCN DNS alone does not resolve Kubernetes
