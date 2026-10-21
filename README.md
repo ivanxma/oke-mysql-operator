@@ -7,6 +7,13 @@ adds a ClusterSet replica in a second OKE cluster.
 Defaults: operator chart **2.3.0**, MySQL/Router **26.7.0**, Helm **v4.3.1**,
 three MySQL members, two Routers, and a **10Gi PVC request per member**.
 
+## Community OKD on OCI
+
+For the separate SCOS single-node installation workflow, see
+[Community OKD scripts and clean installation sequence](openshift/community/README.md).
+Deployment-specific installation records and access details stay under the
+Git-ignored `internal_doc/` directory.
+
 ## Prerequisites
 
 - A Linux 9 administration host: Oracle Linux, RHEL, Rocky Linux, or AlmaLinux.

@@ -1,5 +1,7 @@
 # OKE c2: technical details
 
+Addresses and resource names in this public reference are illustrative; live inventory is kept in ignored `internal_doc/`.
+
 Use the [c2 README](../oke2/README.md) for prerequisites and installation.
 Run local wrapper commands below from `~/mysqlk8s/oke2`; root scripts 31–33
 run from `~/mysqlk8s`.
@@ -71,7 +73,7 @@ local configuration and kubeconfig files out of source control.
 
 ## CNI and subnet capacity
 
-Both OKE clusters share `10.21.148.0/24`. The subnet was expanded from `/25`
+Both OKE clusters share `10.60.10.0/24`. The subnet was expanded from `/25`
 after c2 exhausted all 125 usable addresses during CNI initialization.
 The UDP/53 security rule now also allows sources from `/24`. These are separate
 settings: a DNS rule cannot create additional subnet IP addresses.
@@ -138,7 +140,7 @@ endpoints that point to the same Kubernetes cluster.
 ### DNS and network requirements
 
 The observed c1 and c2 use VCN-native pod networking in the shared private
-subnet **`10.21.148.0/24`**. Both use `cluster.local`, so forwarding that whole
+subnet **`10.60.10.0/24`**. Both use `cluster.local`, so forwarding that whole
 zone would redirect local Kubernetes service lookups. Instead step 05 forwards:
 
 - From c2 to c1: the namespaces containing c1 InnoDBClusters, currently

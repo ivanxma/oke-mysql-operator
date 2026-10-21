@@ -1,0 +1,6 @@
+community.env
+.state/
+generated/
+*.ign
+*.iso
+pull-secret.json

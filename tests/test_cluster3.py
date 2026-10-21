@@ -62,9 +62,9 @@ class Cluster3Tests(unittest.TestCase):
         self.assertIn('--passwords-from-stdin',k.call_args.args)
 
     def test_namespace_forwarding_is_specific_and_deterministic(self):
-        text=c3.forwarding({'mysql-secondary.svc.cluster.local','mysql.svc.cluster.local'},['10.21.148.20','10.21.148.21'])
+        text=c3.forwarding({'mysql-secondary.svc.cluster.local','mysql.svc.cluster.local'},['10.60.10.20','10.60.10.21'])
         self.assertIn('mysql.svc.cluster.local:53 {',text)
-        self.assertIn('forward . 10.21.148.20 10.21.148.21',text)
+        self.assertIn('forward . 10.60.10.20 10.60.10.21',text)
         self.assertNotIn('\ncluster.local:53',text)
         self.assertNotIn('kube-system',text)
 

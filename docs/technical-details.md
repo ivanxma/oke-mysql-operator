@@ -1,5 +1,7 @@
 # MySQL Operator: technical details
 
+Addresses and resource names in this public reference are illustrative; live inventory is kept in ignored `internal_doc/`.
+
 See the [main README](../README.md) for prerequisites and installation.
 This reference covers architecture, configuration behavior, credentials,
 ClusterSet replication, switchovers, SQL access, and troubleshooting.
@@ -19,9 +21,7 @@ For c2 configuration and operational limits, use [c2 technical details](oke2-tec
 
 ## Deployment architecture
 
-![Deployed OKE and MySQL architecture](diagrams/deployment.png)
-
-[Deployment diagram source](diagrams/deployment.drawio)
+Deployment-specific architecture and live inventory are kept in the local private documentation.
 
 The first two MySQL clusters run in **OKE c1**, in namespaces `mysql` and
 `mysql-secondary`. Each has three MySQL members and two Router pods; the
@@ -31,7 +31,7 @@ resources; MySQL Group Replication operates within each database cluster and
 asynchronous ClusterSet replication runs between them. Each MySQL member uses
 its own `oci-bv` PVC.
 
-OKE c2 shares the Frankfurt VCN and private subnet `10.21.148.0/24`.
+OKE c2 shares the Frankfurt VCN and private subnet `10.60.10.0/24`.
 Its three workers are Ready and its separate MySQL Operator is Available.
 The diagram includes **`mysql-tertiary/mycluster3`**:
 three MySQL members (`mycluster3-0`, `mycluster3-1`, `mycluster3-2`), two Routers,
@@ -112,7 +112,7 @@ rules, including required ICMP traffic, from the linked baseline.
 
 ### Required DNS rule for this environment
 
-The worker and pod subnet is `10.21.148.0/24`. In the OCI Console, open that
+The worker and pod subnet is `10.60.10.0/24`. In the OCI Console, open that
 subnet's security list, or an NSG applied to the CoreDNS pod VNICs, and ensure
 these **ingress** settings are present:
 
@@ -120,13 +120,13 @@ these **ingress** settings are present:
 | --- | --- | --- |
 | Stateless | No (stateful) | No (stateful) |
 | Source type | CIDR | CIDR |
-| Source CIDR | `10.21.148.0/24` | `10.21.148.0/24` |
+| Source CIDR | `10.60.10.0/24` | `10.60.10.0/24` |
 | IP protocol | UDP (17) | TCP (6) |
 | Source port range | All | All |
 | Destination port range | `53` | `53` |
 
 An existing rule covering the same traffic is sufficient. In this deployment,
-TCP was already allowed; adding **UDP/53 from `10.21.148.0/24`** resolved the
+TCP was already allowed; adding **UDP/53 from `10.60.10.0/24`** resolved the
 operator startup failure. If workers and pods use separate subnets, use their
 actual source CIDRs and apply the rules to the subnet/NSG receiving DNS traffic.
 Allow DNS egress from the clients and CoreDNS forwarding to its upstream
@@ -157,7 +157,7 @@ kubectl -n mysql-operator exec deployment/mysql-operator -- \
 ### Shared subnet capacity and NotReady workers
 
 The shared API/worker/pod subnet was expanded from `/25` to
-**`10.21.148.0/24`** on 2026-10-20. The second cluster's CNI reported
+**`10.60.10.0/24`** on 2026-10-20. The second cluster's CNI reported
 `FailedToCreatePrivateIP` / `FailedToAttachVNIC`, explicitly stating that all
 **125 non-reserved addresses** in the former `/25` were allocated. OCI inventory
 confirmed 125 allocated IPs (14 primary and 111 secondary) at diagnosis.
@@ -583,7 +583,7 @@ change the local port. From your laptop, keep step 08 running on the VM and add
 an SSH tunnel in another laptop terminal:
 
 ```bash
-ssh -i ~/key/id_rsa_bb.key -N -L 13306:127.0.0.1:3306 opc@132.145.60.181
+ssh -i "$SSH_IDENTITY" -N -L 13306:127.0.0.1:3306 opc@192.0.2.10
 mysql -h 127.0.0.1 -P 13306 -u root -p
 ```
 

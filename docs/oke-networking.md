@@ -1,5 +1,7 @@
 # Connecting two OKE clusters: network changes and commands
 
+Addresses and resource names in this public reference are illustrative; live inventory is kept in ignored `internal_doc/`.
+
 This guide connects **individual MySQL and CoreDNS pods** between two existing
 OKE clusters. It covers a shared VCN, separate VCNs in one region, and VCNs in
 different regions. It assumes **OCI VCN-native pod networking**, IPv4, and
@@ -41,17 +43,15 @@ not ClusterIPs. Avoid overlapping service ranges in new designs where practical.
 
 ## 2. Current deployment: both OKE clusters in one VCN
 
-![Current shared-VCN deployment](diagrams/deployment.png)
-
-[Deployment diagram source](diagrams/deployment.drawio)
+Deployment-specific architecture and live inventory are kept in the local private documentation.
 
 | Item | c1 | c2 |
 | --- | --- | --- |
 | Region | eu-frankfurt-1 | eu-frankfurt-1 |
-| VCN | vcn_ivanma, 10.21.148.0/24 | Same VCN |
-| Shared private API/worker/pod subnet | 10.21.148.0/24 | Same subnet |
-| Private API | 10.21.148.9:6443 | 10.21.148.73:6443 |
-| Worker IPs | 10.21.148.3, .31, .61 | 10.21.148.27, .64, .70 |
+| VCN | example-vcn, 10.60.10.0/24 | Same VCN |
+| Shared private API/worker/pod subnet | 10.60.10.0/24 | Same subnet |
+| Private API | 10.60.10.9:6443 | 10.60.10.73:6443 |
+| Worker IPs | 10.60.10.3, .31, .61 | 10.60.10.27, .64, .70 |
 | MySQL namespaces | mysql; mysql-secondary | mysql-tertiary |
 | MySQL clusters | mycluster; mycluster2 | mycluster3 |
 | Kubeconfig | ~/.kube/config | ~/.kube/config2, context c2 |
@@ -62,7 +62,7 @@ For this lab, the changes that enabled communication were:
    usable IPs were exhausted during c2 CNI initialization. A `/24` provides
    **253** usable addresses in OCI. CNI preallocation, endpoints, and worker
    replacement all consume capacity beyond the currently running pod count.
-2. Allow **UDP/53 from 10.21.148.0/24**, in addition to TCP DNS and MySQL traffic.
+2. Allow **UDP/53 from 10.60.10.0/24**, in addition to TCP DNS and MySQL traffic.
    TCP traffic was already permitted by an existing broader lab rule.
 3. Forward the remote database namespaces through the opposite cluster's
    CoreDNS pods, in both directions. VCN DNS alone does not resolve Kubernetes
@@ -78,7 +78,7 @@ From the administration VM, check and configure the existing lab with:
 
 ```bash
 cd ~/mysqlk8s
-kubectl --kubeconfig "$HOME/.kube/config" --context context-c1-cum6zxntj4q get nodes
+kubectl --kubeconfig "$HOME/.kube/config" --context example-c1-context get nodes
 kubectl --kubeconfig "$HOME/.kube/config2" --context c2 get nodes
 
 cd oke2
@@ -137,7 +137,7 @@ export POD_SUBNET_A='ocid1.subnet.oc1.eu-frankfurt-1.REPLACE_ME'
 export POD_SUBNET_B='ocid1.subnet.oc1.eu-frankfurt-1.REPLACE_ME'
 export KCFG_A="$HOME/.kube/config"
 export KCFG_B="$HOME/.kube/config2"
-export CTX_A='context-c1-cum6zxntj4q' # Replace for your first cluster.
+export CTX_A='example-c1-context' # Replace for your first cluster.
 export CTX_B='c2'
 export NET_STATE="$HOME/mysqlk8s/generated/oke-networking-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$NET_STATE"
