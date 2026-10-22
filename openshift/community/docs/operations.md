@@ -1,0 +1,166 @@
+# Verification, operation and troubleshooting
+
+Commands below run from `openshift/community/` after sourcing the selected
+regional environment. Diagnostic checks read infrastructure; some save private
+logs, reports or certificates. Apply/deploy/approval commands change resources.
+
+## DNS verification
+
+```bash
+./05-verify-dns.sh
+# Optional polling if publication/cache refresh is pending:
+./05-verify-dns.sh --wait 600 --interval 15
+```
+
+Focus on **8 PASS, 0 FAIL**: API, internal API, console and a fresh apps wildcard
+name must match the registered node IP from both ADMIN and TARGET. Both DNS
+answers and OS lookups are checked. A wrong/extra address fails. Bare `dig`
+queries root name servers and does not validate the cluster.
+
+After DNS passes, run:
+
+```bash
+./00-validate-environment.sh --existing-target
+```
+
+Validation is read-only in OCI/on nodes and saves a private report. Exit 0 means
+checks pass; 1 means failures; 2 means warnings/unverified evidence. Review warnings;
+missing optional client-CIDR evidence is separate from actual cluster readiness.
+The validator's generic VM handoff action is already satisfied when this new SCOS
+VM exists. Do not create another VM merely because that generic action is printed.
+
+## Installation progress and completion
+
+```bash
+./05-wait-for-control-plane.sh --status-only
+```
+
+This performs **one read-only snapshot** and returns. Returning to the shell is
+not an installation-complete signal. It reports DNS/API readiness, Ready nodes,
+operator counts and specific pending conditions for key control-plane services.
+
+```bash
+./05-wait-for-control-plane.sh
+```
+
+Normal wait streams redacted installer events and shows periodic status updates.
+Defaults: 15-second interval after each bounded snapshot, one-hour monitor timeout.
+Use `--interval <seconds>` or `--timeout <seconds>` to adjust. Ctrl-C stops only
+the monitor, not bootstrap on the VM. The installer also has its own wait deadline.
+
+| Final result | Meaning |
+| --- | --- |
+| `INSTALLATION NOT READY` | One-shot checks have not all passed; completion is not confirmed. |
+| `READINESS SNAPSHOT PASSED` | Snapshot passed; normal installer completion and final acceptance remain. |
+| `INSTALLER COMPLETED` | Installer wait succeeded. Run steps 06 and 11. |
+| `WAIT FAILED` / `MONITOR TIMEOUT` | Completion is not confirmed; inspect the reported condition or resume monitoring. |
+
+Require these read-only acceptance checks to pass:
+
+```bash
+./06-check-control-plane.sh
+./11-verify-web-access.sh
+```
+
+Step 06 checks API identity, expected node count, Ready nodes, settled operators
+and updated machine-config pools. All operators Available is insufficient if
+some are still Progressing or Degraded. Step 11 verifies console HTTPS using the
+ingress CA and saves private validation artifacts.
+
+## CLI and browser
+
+Source the selected region's env script before direct CLI commands:
+
+```bash
+oc whoami
+oc get nodes -o wide
+oc get clusteroperators
+oc get machineconfigpools
+```
+
+Run direct `oc` commands on the admin host where the selected `KUBECONFIG` exists,
+or use the orchestration scripts to execute there. Browser sign-in uses
+`kubeadmin` and that cluster's protected `$ADMIN_WORKDIR/sno/auth/kubeadmin-password`.
+Use `https://console-openshift-console.apps.<cluster>.<domain>` through the approved
+private route/DNS path. These placeholders are not actual deployment addresses.
+
+The optional `08-console-tunnel.sh` creates a SOCKS listener on the invoking
+machine. Run it on the browser's machine when a local proxy is required, and
+configure proxy-side DNS. A listener on a remote admin VM is not automatically
+available on your laptop.
+
+An optional demo changes cluster resources, then verifies HTTPS:
+
+```bash
+./07-deploy-demo.sh
+./11-verify-web-access.sh --include-demo
+```
+
+## Add workers
+
+After control-plane acceptance:
+
+```bash
+./09-build-worker-image.sh
+./10-import-worker-image.sh
+```
+
+These create local media and an OCI custom image. Manually launch one new SCOS
+worker from that cluster-specific image first. OL9 is not a registered worker OS
+for this workflow. Each node needs a unique hostname, private IP and machine
+identity. Never clone a joined node disk or reuse another cluster's Ignition.
+
+Read-only discovery:
+
+```bash
+./12-discover-worker-nodes.sh
+oc get csr
+```
+
+Inspect each CSR identity before individually approving it. Approval changes
+cluster state. After intended workers join, update `EXPECTED_NODE_COUNT` in the
+private optional profile and repeat step 06. A VM pool may reference the imported
+worker image only after a successful individual-node test; pool scaling does not
+provide Machine API integration, CSR approval, draining or Kubernetes node cleanup.
+Workers do not add control-plane HA.
+
+Base installation does not install persistent storage, MySQL or Submariner.
+Configure a suitable CSI/storage layer before stateful workloads. See the
+[MySQL workflow](../../mysql-operator/README.md) and the separate
+[Submariner workflow](../networking/submariner/README.md).
+
+## Confirmed ISO cleanup
+
+After successful image import:
+
+```bash
+./04-cleanup-local-iso.sh
+# For imported worker media:
+./04-cleanup-local-iso.sh --worker
+```
+
+The script verifies the uploaded bytes and AVAILABLE image, lists the local
+installer ISO, and requires typing `DELETE`. It deletes only that generated ISO.
+Base ISO, cloud image/object, credentials and receipts remain. Do not rerun
+build/import merely to monitor an installed cluster after cleanup.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| NODE_IP requested before media preparation | Use updated preparation scripts. Register the actual address only after manual VM creation. |
+| Missing zone after discovery | Discovery saves the view but creates nothing in OCI. Preview, then run explicit DNS `--apply`. |
+| CreateZone denied | Verify effective `manage dns-zones`, view-read permission and principal membership in the selected compartment. Keep the OCI request ID; do not switch credentials. |
+| GetZoneRecords HTTP 400 | Updated scripts use page size 100. Preserve the existing zone and rerun apply. Invalid parameters do not require wider IAM. |
+| OCI records correct but NXDOMAIN persists | Pre-publication negative answers may be cached. DNS polling checks both hosts. Do not promise an exact wait from a single returned TTL. Investigate view/DHCP/forwarding if failures persist. |
+| Admin disk too small | Inspect usage. Use confirmed ISO cleanup after import, or expand the correct boot volume/filesystem. Preserve auth/state. |
+| Node Ready, installer still waiting | Inspect operator conditions and revisions. Ready node/API alone is not full cluster acceptance. |
+| Temporary API refusal during rollout | Check node-side kube-apiserver revision and logs. In a single control plane, replacement/restart can interrupt API access. Distinguish changing revisions from repeated crashes. |
+| Authentication/console degraded | Inspect OAuth endpoints, ingress and control-plane discovery/readiness before treating it as a password problem. |
+| Some old installer pods Failed | Read their timestamps/logs and compare with current revision/status; historical failures alone do not prove a current stall. |
+| Monitor appears silent | Updated monitor streams events and emits snapshots. Stop only the old monitor with Ctrl-C, then rerun it. |
+| Changed SSH host key | Verify the intended VM and live-media-to-installed transition. Do not disable checking or remove unrelated known-host entries. |
+| OCI scope conflict | Select the correct private profile. Do not copy another cluster's bucket, view, image or node registration. |
+
+References: [private-zone negative caching](https://docs.oracle.com/en-us/iaas/Content/DNS/Tasks/troubleshooting_nxdomain-error.htm),
+[OKD single-node monitoring](https://docs.okd.io/latest/installing/installing_sno/install-sno-installing-sno.html).

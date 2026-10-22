@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
   echo 'Usage: ./04-upload-image.sh (private OCI upload/import; rerun to resume)'; exit 0
 fi
-load_config; load_host; validate_cluster
+load_config preparation; load_host; validate_cluster preparation
 [[ $OCI_AUTH == instance_principal ]] || fail 'Only instance-principal authentication is allowed.'
 for variable in OCI_BUCKET OCI_NAMESPACE OCI_REGION OCI_COMPARTMENT_ID OCI_COMPARTMENT_NAME; do
   [[ -n ${!variable:-} ]] || fail "Set $variable in the private configuration."

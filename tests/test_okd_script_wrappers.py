@@ -34,6 +34,15 @@ class ScriptWrapperTests(unittest.TestCase):
         self.assertIn('Install complete!', result.stdout)
 
     def test_admin_preparation_does_not_contact_planned_target(self):
+        self.admin_preparation('198.51.100.20')
+
+    def test_admin_preparation_without_node_ip_has_only_admin_host(self):
+        self.admin_preparation('')
+
+    def test_ssh_only_refresh_without_node_ip_does_not_connect_anywhere(self):
+        self.admin_preparation('', ssh_only=True)
+
+    def admin_preparation(self, node_ip, ssh_only=False):
         script = Path(__file__).resolve().parents[1] / 'openshift/community/01-prepare-host.sh'
         with tempfile.TemporaryDirectory(prefix='okd preparation ') as tmp:
             root = Path(tmp)
@@ -52,19 +61,21 @@ class ScriptWrapperTests(unittest.TestCase):
             config = root / 'private.env'
             values = dict(ADMIN_HOST='192.0.2.10', ADMIN_USER='opc',
                           ADMIN_WORKDIR='/home/test/admin work', TARGET_USER='core',
-                          NODE_IP='198.51.100.20', SSH_IDENTITY=str(key))
+                          NODE_IP=node_ip, SSH_IDENTITY=str(key))
             config.write_text(''.join(k+'='+shlex.quote(v)+'\n' for k,v in values.items()))
             env = dict(os.environ, PATH=str(root)+os.pathsep+os.environ['PATH'],
                        OKD_CONFIG_FILE=str(config), OKD_STATE_DIR=str(root/'private state'),
                        SSH_TEST_CALLS=str(calls))
             # An unrelated exported kubeconfig must not affect this fixture.
             env.pop('KUBECONFIG', None)
-            subprocess.run(['bash', str(script)], env=env, check=True, capture_output=True, text=True)
-            requests = [json.loads(line) for line in calls.read_text().splitlines()]
-            self.assertEqual(len(requests), 1)
-            self.assertIn('okd-admin', requests[0])
-            self.assertNotIn('okd-target', requests[0])
+            subprocess.run(['bash', str(script)]+(['--ssh-only'] if ssh_only else []), env=env, check=True, capture_output=True, text=True)
+            requests = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+            self.assertEqual(len(requests), 0 if ssh_only else 1)
+            if requests:
+                self.assertIn('okd-admin', requests[0])
+                self.assertNotIn('okd-target', requests[0])
             state_config = (root/'private state'/'ssh_config').read_text()
+            if not node_ip: self.assertNotIn('Host okd-target',state_config)
             self.assertIn('UserKnownHostsFile "'+str(root/'private state'/'known_hosts')+'"', state_config)
 
 

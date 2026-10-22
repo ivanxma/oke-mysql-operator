@@ -1,0 +1,78 @@
+# Configuration and private state
+
+The sourceable examples are [community.env.example](../community.env.example)
+and [community.optional.env.example](../community.optional.env.example). They
+contain placeholders and generic defaults, not deployment inventory.
+
+`regions/<region>/00-init-config.sh` creates a mode-600 mandatory profile and an
+optional companion under `internal_doc/regions/<region>/`. Existing files are
+retained. Fill the mandatory profile; uncomment optional overrides only when
+needed. The optional file loads first; explicit primary settings take precedence.
+
+## Required before image preparation
+
+| Setting | Meaning |
+| --- | --- |
+| `ADMIN_HOST`, `ADMIN_USER` | Admin-host IPv4 address and SSH account; loopback can be used when running on that host. |
+| `SSH_IDENTITY` | Existing protected private key on the invoking host. |
+| `ADMIN_WORKDIR` | Dedicated absolute workspace under `/home/` on the admin host. Use separate, non-nested workspaces for clusters. |
+| `TARGET_USER` | `core` for installed SCOS nodes. |
+| `CLUSTER_NAME`, `BASE_DOMAIN` | Cluster DNS identity and controlled private base domain. |
+| `MACHINE_CIDR` | Actual private node-subnet CIDR. |
+| `POD_CIDR`, `SERVICE_CIDR` | Aligned, non-overlapping overlay networks; check against all connected networks and other clusters. |
+| `INSTALL_DISK` | Device overwritten when the new VM boots its installer image. Verify against the intended OCI attachment. |
+| `OCI_REGION` | Must match the selected regional folder. |
+| `OCI_AUTH` | `instance_principal` only. |
+| `OCI_COMPARTMENT_ID`, `OCI_COMPARTMENT_NAME` | Explicitly authorized deployment compartment. |
+
+`NODE_IP` is not a preparation input. After manual VM creation, register the
+actual assigned address with `05-register-node-ip.sh`. Never invent an address
+merely to pass a configuration check. Worker IP lists are not required in advance.
+
+The same source can run on a workstation or the admin host. Key paths and private
+state are local to the invoking host; do not copy a workstation profile over a
+working admin-host profile. Loopback SSH must work when using a loopback admin
+address.
+
+## Optional settings
+
+| Setting | Default / purpose |
+| --- | --- |
+| `OKD_VERSION` | Pinned by the shared scripts; select a compatible public release deliberately. |
+| `OCI_BUCKET`, `OCI_NAMESPACE` | Normally discovered/generated and registered by step 02. |
+| `CLIENT_CIDR` | Optional evidence for client-facing security-rule auditing. Missing evidence produces a warning. |
+| `EXPECTED_NODE_COUNT` | Initially 1; update after approved workers join. |
+| `WORKER_INSTALL_DISK` | Worker installation device. |
+| `INGRESS_CA_FILE` | CA bundle on the admin host when using a custom ingress certificate. |
+| `KUBECONFIG` | Defaults to `$ADMIN_WORKDIR/sno/auth/kubeconfig`. |
+| `OKD_STATE_DIR` | Defaults to ignored per-region local state. |
+| `SOCKS_PORT` | Optional browser tunnel port. |
+
+Source `regions/<region>/env.sh` to select a site. The shared installation scripts
+reuse that selection through `OKD_CONFIG_FILE`. Each region has independent
+workspace, SSH state, bucket registration and kubeconfig. Regional checks
+currently require the two configured sites to use the same authorized compartment;
+use separate checkouts/configuration inventories for different tenancies.
+An OCI region change alone does not change instance-principal tenancy identity.
+
+## Generated state
+
+| Location | Contents |
+| --- | --- |
+| `$OKD_STATE_DIR` | Protected local SSH configuration, known hosts, bucket/node registration and validation reports. |
+| `$ADMIN_WORKDIR/downloads/<release>/` | Downloaded OKD tool archives, signature and checksums. |
+| `$ADMIN_WORKDIR/scos-live.iso` | Verified base ISO. |
+| `$ADMIN_WORKDIR/sno/` | Installation state, Ignition, logs and protected authentication files. Preserve it. |
+| `$ADMIN_WORKDIR/okd-sno-oci.iso` | Generated control-plane installer media. |
+| `$ADMIN_WORKDIR/oci-control-plane-image.json` | Image import receipt, scope, checksum and image availability. |
+| `$ADMIN_WORKDIR/oci-dns-view.json` | Discovered subnet/VCN/resolver/view bound to this cluster and region. |
+| `$ADMIN_WORKDIR/worker-image/` | Cluster-specific worker media and import receipt. |
+
+`env.sh` loads generated bucket/node registration. Re-source it after those
+steps to refresh an existing shell. DNS configuration reads saved discovery
+automatically and revalidates the live mapping; no manual view-OCID input is needed.
+
+Select kubeconfig through the shared environment and exported `KUBECONFIG`.
+Scripts do not fall back to `~/.kube/config`. Keep actual profiles, OCIDs,
+addresses, key paths, access records, passwords, kubeconfigs, receipts and logs
+out of the public repository. Keep the private key in its protected key directory.

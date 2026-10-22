@@ -9,10 +9,11 @@ three MySQL members, two Routers, and a **10Gi PVC request per member**.
 
 ## Community OKD on OCI
 
-For the separate SCOS single-node installation workflow, see
-[Community OKD scripts and clean installation sequence](openshift/community/README.md).
-Deployment-specific installation records and access details stay under the
-Git-ignored `internal_doc/` directory.
+Use the [OKD installation guide](openshift/community/README.md) for the numbered
+workflow, [sample configuration](openshift/community/community.env.example) and
+[technical docs](openshift/community/docs/installation.md). Regional wrappers
+select independent London/Frankfurt profiles. Real deployment data stays in
+Git-ignored `internal_doc/`.
 
 For MySQL on that OKD cluster, use the numbered
 [OpenShift MySQL Operator and ClusterSet scripts](openshift/mysql-operator/README.md).

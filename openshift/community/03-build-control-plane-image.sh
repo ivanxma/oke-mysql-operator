@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
-if [[ ${1:-} == -h || ${1:-} == --help ]]; then echo 'Usage: ./03-build-control-plane-image.sh (set DNS, node IP and disk in the private configuration)'; exit 0; fi
-load_config; load_host; validate_cluster
-[[ $NODE_IP != "$SSH_HOST" ]] || fail 'NODE_IP must identify a separate new CoreOS VM; do not target the OL9 preparation host.'
-remote_run "$OKD_VERSION" "$CLUSTER_NAME" "$BASE_DOMAIN" "$NODE_IP" "$MACHINE_CIDR" "$POD_CIDR" "$SERVICE_CIDR" "$INSTALL_DISK" "$ADMIN_WORKDIR" <<'REMOTE'
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then echo 'Usage: ./03-build-control-plane-image.sh (build cluster-specific media; no node IP or DNS required until VM bootstrap)'; exit 0; fi
+load_config preparation; load_host; validate_cluster preparation
+remote_run "$OKD_VERSION" "$CLUSTER_NAME" "$BASE_DOMAIN" "$MACHINE_CIDR" "$POD_CIDR" "$SERVICE_CIDR" "$INSTALL_DISK" "$ADMIN_WORKDIR" <<'REMOTE'
 set -euo pipefail
-version=$1 cluster=$2 domain=$3 node_ip=$4 machine=$5 pod=$6 service=$7 disk=$8
-work=$9
+version=$1 cluster=$2 domain=$3 machine=$4 pod=$5 service=$6 disk=$7
+work=$8
 export PATH="$work/bin:$PATH"
 [[ -f "$work/downloaded-version" && $(cat "$work/downloaded-version") == "$version" ]] || { echo 'Run step 02 for this version first.' >&2; exit 1; }
 [[ ! -e "$work/sno" ]] || { echo "Existing $work/sno retained. Use a new preparation workspace for a new installation." >&2; exit 1; }
-# Check prerequisite DNS before generating credentials tied to this cluster name.
-for name in "api.$cluster.$domain" "api-int.$cluster.$domain" "console-openshift-console.apps.$cluster.$domain"; do
-  dig +short A "$name" | grep -Fx "$node_ip" >/dev/null || { echo "DNS $name must resolve to $node_ip" >&2; exit 1; }
-done
+# IP assignment and DNS validation happen after importing the image and creating the VM.
 umask 077
 cd "$work"
 openshift-install coreos print-stream-json > coreos-stream.json
@@ -58,16 +54,15 @@ ci iso kargs modify --append console=ttyS0,115200n8 --append rd.live.ram=1 \
   --append rd.live.overlay=none --append coreos.liveiso.fromram /data/okd-sno-oci.iso
 ci iso kargs show /data/okd-sno-oci.iso
 sha256sum okd-sno-oci.iso > okd-sno-oci.iso.sha256
-python3 - "$version" "$cluster.$domain" "$disk" <<'PY'
+python3 - "$version" "$cluster.$domain" "$disk" "$machine" <<'PY'
 import json,sys
 from pathlib import Path
-version,domain,disk=sys.argv[1:]
+version,domain,disk,machine=sys.argv[1:]
 Path('control-plane-build.json').write_text(json.dumps(dict(version=version,
-    cluster_domain=domain,architecture='x86_64',role='control-plane',install_disk=disk),indent=2)+'\n')
+    cluster_domain=domain,architecture='x86_64',role='control-plane',install_disk=disk,machine_cidr=machine,node_ip_required=False),indent=2)+'\n')
 PY
-printf '%s\n' "$node_ip" > expected-node-ip
 printf '%s\n' "$cluster.$domain" > cluster-domain
 printf '\nImage prepared: %s/okd-sno-oci.iso\n' "$work"
-printf 'Intended CoreOS launch: IP %s, installation disk %s (rebuild/release the existing OL9 target IP explicitly).\n' "$node_ip" "$disk"
-printf 'No disks were reformatted. Import and launch instructions are in internal_doc/openshift/community-sno.html.\n'
+printf 'Next: upload/import with step 04, manually create the VM, then register its actual private IP and configure DNS. Installation disk: %s\n' "$disk"
+printf 'No disks were reformatted. Import and launch instructions are in the private regional installation guide.\n'
 REMOTE

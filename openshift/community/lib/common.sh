@@ -15,11 +15,24 @@ load_config() {
   # The shared environment is the only kubeconfig-selection entry point.
   source "$COMMUNITY_DIR/env.sh"
   STATE_DIR=$OKD_STATE_DIR
+  if [[ -n ${OKD_REGION:-} ]]; then
+    need python3
+    if [[ ${1:-} == preparation ]]; then
+      python3 "$COMMUNITY_DIR/../../regions/lib/check_config.py" --preparation || fail 'Regional preparation checks failed; no remote command was run.'
+    else
+      python3 "$COMMUNITY_DIR/../../regions/lib/check_config.py" || fail 'Regional configuration checks failed; no remote command was run.'
+    fi
+  fi
   [[ $KUBECONFIG == /* && $KUBECONFIG != *:* ]] || fail 'KUBECONFIG must name one absolute path on the admin host.'
 }
 load_host() {
   [[ -f "$STATE_DIR/host.env" ]] || fail 'Run ./01-prepare-host.sh using the private deployment configuration first.'
+  local expected_host=${ADMIN_HOST:-} expected_user=${ADMIN_USER:-} expected_target=${NODE_IP:-}
   source "$STATE_DIR/host.env"
+  if [[ -n ${OKD_REGION:-} ]]; then
+    [[ $SSH_HOST == "$expected_host" && $SSH_USER == "$expected_user" ]] ||
+      fail 'Saved SSH state does not match the regional profile. Run its step 01 to prepare matching state.'
+  fi
   validate_host "$SSH_USER" "$SSH_HOST"
 }
 validate_host() {
@@ -40,19 +53,19 @@ remote_run() {
   ssh -F "$STATE_DIR/ssh_config" okd-admin "$cmd"
 }
 validate_cluster() {
-  python3 - "$CLUSTER_NAME" "$BASE_DOMAIN" "$NODE_IP" "$MACHINE_CIDR" "$POD_CIDR" "$SERVICE_CIDR" "$INSTALL_DISK" "$OKD_VERSION" <<'PY'
+  python3 - "$CLUSTER_NAME" "$BASE_DOMAIN" "${NODE_IP:-}" "$MACHINE_CIDR" "$POD_CIDR" "$SERVICE_CIDR" "$INSTALL_DISK" "$OKD_VERSION" "${1:-installation}" <<'PY'
 import ipaddress, re, sys
-name, domain, addr, machine, pod, service, disk, version = sys.argv[1:]
+name, domain, addr, machine, pod, service, disk, version, stage = sys.argv[1:]
 label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
 if not re.fullmatch(label, name): raise SystemExit('Invalid CLUSTER_NAME')
 if not domain or not all(re.fullmatch(label, x) for x in domain.split('.')):
     raise SystemExit('Set BASE_DOMAIN in the private deployment configuration to your actual DNS domain')
 if domain.endswith('example.com'): raise SystemExit('Replace the example DNS domain')
 try:
-    node = ipaddress.IPv4Address(addr)
+    node = ipaddress.IPv4Address(addr) if addr or stage != 'preparation' else None
     nets = [ipaddress.IPv4Network(x) for x in (machine, pod, service)]
 except ValueError as e: raise SystemExit(str(e))
-if node not in nets[0] or node in (nets[0].network_address, nets[0].broadcast_address):
+if node is not None and (node not in nets[0] or node in (nets[0].network_address, nets[0].broadcast_address)):
     raise SystemExit('NODE_IP must be a usable address in MACHINE_CIDR')
 if any(a.overlaps(b) for i,a in enumerate(nets) for b in nets[i+1:]):
     raise SystemExit('Machine, pod and service networks must not overlap')

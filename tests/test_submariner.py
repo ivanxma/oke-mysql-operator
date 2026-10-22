@@ -1,0 +1,171 @@
+"""Submariner London-first scope, identity and command guards; no live clusters."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import Mock, patch
+
+ROOT=Path(__file__).resolve().parents[1]
+DIR=ROOT/'openshift/community/networking/submariner'
+spec=importlib.util.spec_from_file_location('submariner_workflow',DIR/'lib/workflow.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+
+
+class SubmarinerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        self.kube=self.root/'kubeconfig';self.kube.write_text('synthetic');self.kube.chmod(0o600)
+        self.peer=self.root/'peerconfig';self.peer.write_text('synthetic');self.peer.chmod(0o600)
+        self.env=dict(ADMIN_WORKDIR=str(self.root),SUBMARINER_STATE_DIR=str(self.root/'internal_doc/submariner'),
+                      SUBMARINER_VERSION='0.24.2',KUBECONFIG=str(self.kube),
+                      SUBMARINER_TARGET_API='https://api.target.test:6443',
+                      SUBMARINER_TARGET_CONTEXT='same-context',SUBMARINER_TARGET_ID='target',
+                      SUBMARINER_TARGET_GATEWAY='worker-target',OCI_REGION='uk-london-1',
+                      MACHINE_CIDR='192.0.2.0/24',SUBMARINER_PEER_MACHINE_CIDR='198.51.100.0/24',
+                      SUBMARINER_ENABLE_PEER='false',SUBMARINER_PEER_INSTALLATION_VERIFIED='false',
+                      SUBMARINER_PEER_CONTEXT='same-context',SUBMARINER_PEER_KUBECONFIG=str(self.peer),
+                      SUBMARINER_PEER_API='https://api.peer.test:6443',SUBMARINER_PEER_ID='peer',
+                      SUBMARINER_LONDON_INSTALLATION_VERIFIED='true',SUBMARINER_COMPATIBILITY_REVIEWED='true',
+                      SUBMARINER_NETWORK_REVIEWED='true')
+        self.w=module.Workflow(self.env)
+        self.target=dict(uid='target-uid',id='target',cidrs=['10.132.0.0/14','172.31.0.0/16','192.0.2.0/24'],
+                         gateway='worker-target',node_uid='node-uid',node_resource_version='12')
+        self.other=dict(uid='peer-uid',id='peer',cidrs=['10.128.0.0/14','172.30.0.0/16','198.51.100.0/24'],gateway='worker-peer')
+
+    def enable_peer(self):
+        self.w.env['SUBMARINER_ENABLE_PEER']='true';self.w.env['SUBMARINER_PEER_INSTALLATION_VERIFIED']='true'
+
+    def test_download_checksum_mismatch_refused_before_binary_execution(self):
+        import io
+        import types
+        asset='subctl-v0.24.2-linux-amd64.tar.gz'
+        responses=[io.BytesIO(('0'*64+'  '+asset+'\n').encode()),io.BytesIO(b'tampered')]
+        with patch.object(module.sys,'platform','linux'),patch.object(module.os,'uname',return_value=types.SimpleNamespace(machine='x86_64')),patch.object(module.urllib.request,'urlopen',side_effect=responses),patch.object(module,'run') as call:
+            with self.assertRaisesRegex(ValueError,'checksum mismatch'):self.w.download()
+            call.assert_not_called()
+        self.assertFalse(self.w.bin.exists())
+
+    def test_download_extracts_only_verified_binary(self):
+        import io
+        import types
+        import tarfile
+        import hashlib
+        stream=io.BytesIO()
+        with tarfile.open(fileobj=stream,mode='w:gz') as archive:
+            for name,data in [('subctl',b'synthetic-client'),('../../outside',b'bad')]:
+                entry=tarfile.TarInfo(name);entry.size=len(data);archive.addfile(entry,io.BytesIO(data))
+        data=stream.getvalue();asset='subctl-v0.24.2-linux-amd64.tar.gz'
+        responses=[io.BytesIO((hashlib.sha256(data).hexdigest()+'  '+asset+'\n').encode()),io.BytesIO(data)]
+        with patch.object(module.sys,'platform','linux'),patch.object(module.os,'uname',return_value=types.SimpleNamespace(machine='x86_64')),patch.object(module.urllib.request,'urlopen',side_effect=responses),patch.object(module,'run',return_value='subctl version 0.24.2'):
+            self.w.download()
+        self.assertEqual(self.w.bin.read_bytes(),b'synthetic-client')
+        self.assertEqual(self.w.bin.stat().st_mode & 0o777,0o700)
+        self.assertFalse((self.root/'outside').exists())
+
+    def test_syntax_and_help_never_contact_cluster(self):
+        for path in DIR.rglob('*.sh'):subprocess.run(['bash','-n',str(path)],check=True)
+        for path in DIR.glob('[0-9][0-9]-*.sh'):
+            r=subprocess.run(['bash',str(path),'--help'],capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr)
+
+    def test_london_only_validation_never_reads_peer(self):
+        self.w.health=Mock(return_value=self.target)
+        self.assertEqual(self.w.validation(),{'target':self.target})
+        self.w.health.assert_called_once_with()
+        self.assertEqual((self.w.state/'clusters.json').stat().st_mode & 0o777,0o600)
+
+    def test_peer_join_refused_before_any_labels_or_subctl(self):
+        self.w.health=Mock(return_value=self.target);self.w.label=Mock();self.w.sub=Mock()
+        with self.assertRaisesRegex(ValueError,'Peer phase disabled'):self.w.execute('peer')
+        self.w.label.assert_not_called();self.w.sub.assert_not_called()
+
+    def test_same_cluster_selected_twice_refused(self):
+        self.enable_peer();self.w.health=Mock(side_effect=[self.target,{**self.other,'uid':'target-uid'}])
+        with self.assertRaisesRegex(ValueError,'same Kubernetes cluster'):self.w.validation()
+
+    def test_peer_cidrs_overlap_refused(self):
+        self.enable_peer();self.w.health=Mock(side_effect=[self.target,{**self.other,'cidrs':['10.132.0.0/14']}])
+        with self.assertRaisesRegex(ValueError,'overlap'):self.w.validation()
+
+    def test_machine_service_overlap_across_clusters_refused(self):
+        with self.assertRaises(ValueError):module.ensure_disjoint(['192.0.2.0/24'],['192.0.2.0/25'])
+
+    def test_saved_peer_identity_survives_london_only_validation(self):
+        module.private_write(self.w.state/'clusters.json',{'target':self.target,'peer':self.other})
+        self.w.health=Mock(return_value=self.target);self.w.validation()
+        self.assertEqual(json.loads((self.w.state/'clusters.json').read_text())['peer']['uid'],'peer-uid')
+
+    def test_replaced_cluster_uid_refused(self):
+        module.private_write(self.w.state/'clusters.json',{'target':self.target})
+        self.w.health=Mock(return_value={**self.target,'uid':'replacement'})
+        with self.assertRaisesRegex(ValueError,'identity differs'):self.w.validation()
+
+    def test_wrong_expected_api_rejected_before_live_read(self):
+        with patch.object(module,'run',return_value='https://wrong.test:6443'):
+            with self.assertRaisesRegex(ValueError,'API'):self.w.selection()
+
+    def test_default_kubeconfig_rejected_without_oc(self):
+        self.w.env['KUBECONFIG']=str(Path.home()/'.kube/config')
+        with patch.object(module,'run') as run:
+            with self.assertRaises(ValueError):self.w.selection()
+            run.assert_not_called()
+
+    def test_two_equal_context_names_use_separate_config_flags(self):
+        self.w.bin.parent.mkdir(parents=True);self.w.bin.write_text('fake')
+        self.w.selection=Mock(side_effect=[([],self.kube,'same-context'),([],self.peer,'same-context')])
+        with patch.object(module,'run',return_value='0.24.2'),patch.object(module.subprocess,'run') as call:
+            self.w.sub(['verify','--disruptive-tests=false'],both=True)
+        args=call.call_args.args[0]
+        self.assertEqual(args[args.index('--kubeconfig')+1],str(self.kube))
+        self.assertEqual(args[args.index('--toconfig')+1],str(self.peer))
+        self.assertIn('--disruptive-tests=false',args)
+        self.assertEqual(call.call_args.kwargs['stdin'],subprocess.DEVNULL)
+
+    def test_non_london_initial_target_refused_before_oc(self):
+        self.w.env['OCI_REGION']='eu-frankfurt-1'
+        with patch.object(module,'run') as call:
+            with self.assertRaisesRegex(ValueError,'London'):self.w.health()
+            call.assert_not_called()
+
+    def test_installation_gate_refused_before_oc(self):
+        self.w.env['SUBMARINER_LONDON_INSTALLATION_VERIFIED']='false'
+        with patch.object(module,'run') as call:
+            with self.assertRaisesRegex(ValueError,'Complete London'):self.w.health()
+            call.assert_not_called()
+
+    def test_missing_worker_and_control_plane_gateway_refused(self):
+        def doc(peer,*args):
+            if args==('get','clusteroperators'):
+                return {'items':[{'status':{'conditions':[{'type':'Available','status':'True'},{'type':'Progressing','status':'False'},{'type':'Degraded','status':'False'}]}}]}
+            if args==('get','machineconfigpools'):
+                return {'items':[{'status':{'conditions':[{'type':'Updated','status':'True'},{'type':'Updating','status':'False'},{'type':'Degraded','status':'False'}]}}]}
+            if args==('get','network.config.openshift.io','cluster'):
+                return {'spec':{'networkType':'OVNKubernetes'},'status':{'networkType':'OVNKubernetes'}}
+            return {'items':[{'metadata':{'name':'worker-target','labels':{'node-role.kubernetes.io/master':''}},'spec':{},
+                              'status':{'conditions':[{'type':'Ready','status':'True'}]}}]}
+        self.w.read=Mock(side_effect=doc);self.w.selection=Mock(return_value=(['oc'],self.kube,'context'))
+        with patch.object(module,'run',return_value='ok'):
+            with self.assertRaisesRegex(ValueError,'control-plane'):self.w.health()
+
+    def test_gateway_patch_contains_uid_and_version_guards(self):
+        self.w.health=Mock(return_value=self.target)
+        self.w.selection=Mock(return_value=(['oc'],self.kube,'context'))
+        self.w.read=Mock(return_value={'metadata':{'uid':'node-uid'}})
+        with patch.object(module,'run') as call:self.w.label()
+        args=call.call_args.args[0];patches=json.loads(args[args.index('-p')+1])
+        self.assertEqual(patches[0],{'op':'test','path':'/metadata/uid','value':'node-uid'})
+        self.assertEqual(patches[1]['path'],'/metadata/resourceVersion')
+        self.assertEqual(patches[2]['path'],'/metadata/labels/submariner.io~1gateway')
+
+    def test_diagnostics_do_not_require_healthy_operators(self):
+        module.private_write(self.w.state/'clusters.json',{'target':self.target})
+        self.w.health=Mock(side_effect=ValueError('unhealthy'))
+        self.w.read=Mock(return_value={'metadata':{'uid':'target-uid'}});self.w.sub=Mock()
+        self.w.execute('status');self.w.health.assert_not_called();self.w.sub.assert_called_once_with(['show','all'])
+
+
+if __name__=='__main__':unittest.main()

@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then echo 'Usage: ./02-download-okd.sh (uses private deployment configuration and saved SSH host)'; exit 0; fi
-load_config; load_host
+load_config preparation; load_host
 [[ $OKD_VERSION =~ ^[A-Za-z0-9._-]+$ ]] || fail 'Invalid OKD_VERSION'
 remote_run "$OKD_VERSION" "$ADMIN_WORKDIR" <<'REMOTE'
 set -euo pipefail
