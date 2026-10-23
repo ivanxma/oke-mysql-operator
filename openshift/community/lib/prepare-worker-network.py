@@ -40,6 +40,11 @@ def memberships(vnic, cid, subnet, address, group):
     return result
 
 
+def list_groups(network, all_results, cid, vcn):
+    # Unlike list_subnets, this SDK operation makes compartment_id optional/keyword-only.
+    return all_results(network.list_network_security_groups,compartment_id=cid,vcn_id=vcn).data
+
+
 def write(path, value):
     require(not path.is_symlink(),'Refusing symlink state file')
     path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
@@ -77,7 +82,7 @@ def main(args):
     vcn=network.get_vcn(subnet.vcn_id).data
     require(vcn.compartment_id==cid,'VCN is outside the selected compartment')
     name='okd-nodes-'+uid[:8]
-    groups=[g for g in oci.pagination.list_call_get_all_results(network.list_network_security_groups,cid,vcn_id=vcn.id).data
+    groups=[g for g in list_groups(network,oci.pagination.list_call_get_all_results,cid,vcn.id)
             if g.display_name==name]
     require(len(groups)<=1,'Ambiguous node NSG; preserve state for review')
     group=groups[0] if groups else None

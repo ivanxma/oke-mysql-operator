@@ -10,6 +10,13 @@ network=importlib.util.module_from_spec(spec);spec.loader.exec_module(network)
 
 
 class WorkerNetworkTests(unittest.TestCase):
+    def test_nsg_discovery_uses_keyword_compartment_filter_required_by_sdk(self):
+        def listing(*,compartment_id,vcn_id):
+            self.assertEqual(compartment_id,'cid');self.assertEqual(vcn_id,'vcn')
+            return Obj(data=['owned-group'])
+        result=network.list_groups(Obj(list_network_security_groups=listing),lambda call,**kwargs:call(**kwargs),'cid','vcn')
+        self.assertEqual(result,['owned-group'])
+
     def test_other_compartment_vcn_or_cluster_owned_group_is_refused(self):
         for cid,vcn,uid in [('other','vcn','uid'),('cid','other','uid'),('cid','vcn','other')]:
             with self.subTest(cid=cid,vcn=vcn,uid=uid),self.assertRaises(ValueError):
