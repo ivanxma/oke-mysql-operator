@@ -150,6 +150,20 @@ Preserve `sno/`, authentication and receipts. Re-running monitoring, DNS repair 
 validation does not require rebuilding installer credentials. A build refuses
 existing installation state; use a separate workspace for a new cluster.
 
+## Handoff to restart operations
+
+After installation acceptance, retain the generated regional profiles, selected
+kubeconfigs, broker state and database volumes. Record the expected node count
+and intended MySQL ClusterSet roles in private deployment state. Keep the
+administration host clock and access to both regional APIs working.
+
+For a normal VM restart, use [the restart health procedure](restart-health.md).
+Do not repeat image building/import, VM replacement, broker join or database
+creation as a restart step. Accept OKD and CSI in each region first, then the
+mesh/discovery and database layers. One-site recovery also requires checking the
+surviving site and the complete ClusterSet before declaring two-site readiness.
+
+
 ## References
 
 - [OKD single-node installation](https://docs.okd.io/latest/installing/installing_sno/install-sno-installing-sno.html)

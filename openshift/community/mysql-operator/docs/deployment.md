@@ -79,6 +79,10 @@ Sources: [operator properties](https://dev.mysql.com/doc/mysql-operator/en/mysql
 
 ## Restart recovery and discovery prerequisites
 
+The [restart operations runbook](../../docs/restart-health.md) covers both-site
+and single-site outages, read-only health checks, native replica recovery and
+fresh-write acceptance. Use it for the dependency order before any repair.
+
 A successful gateway connection does not prove Lighthouse can reach the broker.
 Check ServiceExport `Ready=True`, remote ServiceImports and EndpointSlice hostname
 records. Both database namespace names must exist in both clusters because imports

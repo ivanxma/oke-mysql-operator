@@ -201,7 +201,6 @@ namespace deletion also removes them. Existing namespaces from earlier runs are
 rejected. Native verifier cleanup retains responsibility for test workloads.
 See [the pinned upstream framework](https://github.com/submariner-io/shipyard/blob/v0.24.2/test/e2e/framework/framework.go).
 
-
 Acceptance: remote connections connected in both directions, verifier suites
 pass, and existing OKD workloads remain healthy. A mesh failure must not be
 reported as database/site failover success. Namespace separation and a working
@@ -281,6 +280,10 @@ networking. The automated recipe is for the supported two-region lab; gateway HA
 and disruptive failover tests need a separate maintenance plan.
 
 ## Broker client reload after restart
+
+Use the [restart health runbook](../../../docs/restart-health.md) for the full
+local-platform, network/discovery and database acceptance sequence after either
+region or both regions restart.
 
 If gateways are connected but ServiceExports report broker TLS errors, compare
 that with the broker CA and token currently stored in each selected spoke's

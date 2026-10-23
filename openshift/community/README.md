@@ -144,9 +144,10 @@ See [replacement details](docs/operations.md#replace-a-terminated-lab-control-pl
 ## Details and optional work
 
 - [Generated folder and configuration options](docs/configuration.md)
+- [Restart health: one or both regions](docs/restart-health.md)
 - [Status, CLI/browser, workers, demo and ISO cleanup](docs/operations.md)
 - [Network diagram](docs/architecture.md)
-- [Submariner](networking/submariner/README.md) · [MySQL Operator](../mysql-operator/README.md)
+- [Submariner](networking/submariner/README.md) · [Regional MySQL ClusterSet](mysql-operator/README.md)
 - [Sample mandatory env](community.env.example) · [Optional settings](community.optional.env.example)
 
 Generated configuration, state and credentials stay in Git-ignored `generated/openshift/`.

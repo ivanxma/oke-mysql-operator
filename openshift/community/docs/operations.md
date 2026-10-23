@@ -6,6 +6,15 @@ inside the clone. `internal_doc/` holds private documents, not new execution sta
 Numbered launchers automatically select that folder's profile. Diagnostic checks read infrastructure; some save private
 logs, reports or certificates. Apply/deploy/approval commands change resources.
 
+## After restarting an existing cluster
+
+Use [Restart health: one or both regions](restart-health.md) for the ordered
+OKD/CSI, Submariner/Lighthouse and MySQL checks. It distinguishes read-only
+verification, optional test writes and targeted recovery. Run local checks in
+both regions, including the surviving site after a one-region restart.
+Installation-complete monitoring below is for initial bootstrap; a routine
+restart uses node/operator/storage and application readiness checks.
+
 ## DNS verification
 
 ```bash

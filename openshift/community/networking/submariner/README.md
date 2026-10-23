@@ -72,3 +72,7 @@ For an existing joined pair, resume at the readiness check; do not rerun join.
 For broker TLS errors after a restart, preview `06-restart-service-discovery.sh`,
 then use `--apply` only after the existing credentials pass verification. Recheck
 ServiceExports and remote DNS afterward. See [recovery details](docs/workflow.md).
+
+After a restart, use the [two-region health runbook](../../docs/restart-health.md)
+for local OKD/storage checks, mesh and discovery readiness, and MySQL acceptance.
+A surviving region alone cannot prove that the complete two-site service recovered.
