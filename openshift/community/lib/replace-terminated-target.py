@@ -73,13 +73,15 @@ def verify(work, state, cid, region, cluster, domain, machine, address, previous
     saved = read(local / 'verified-target.json') if (local / 'verified-target.json').exists() else None
     if saved and saved.get('instance_id') not in (old.id, new.id):
         raise ValueError('Saved verified target belongs to another VM')
-    if current and current['node_ip'] == address and (not saved or saved.get('instance_id') != new.id):
+    if current and current['node_ip'] == address and (not saved or saved.get('instance_id') not in (old.id, new.id)):
         raise ValueError('Already-registered replacement lacks matching verified VM state')
     if current and current['node_ip'] != address and saved and saved.get('instance_id') != old.id:
         raise ValueError('Stale registration is not bound to the terminated VM')
     if current and current['node_ip'] != address and not saved:
         raise ValueError('Need verified-target.json for old address ownership; preserve state and review')
-    record = dict(instance_id=new.id, name=new.display_name, image_id=new.image_id,
+    if current and saved and saved.get('instance_id') == old.id and saved.get('private_ip', current['node_ip']) != current['node_ip']:
+        raise ValueError('Old address differs from the verified terminated target')
+    record = dict(registration_current=bool(current and current['node_ip'] == address and saved and saved.get('instance_id') == new.id), instance_id=new.id, name=new.display_name, image_id=new.image_id,
                   private_ip=address, vnic_id=vnic.id, subnet_id=subnet.id, compartment_id=cid,
                   region=region, shape=new.shape, ocpus=new.shape_config.ocpus, memory_gbs=new.shape_config.memory_in_gbs)
     return record, current
@@ -87,7 +89,7 @@ def verify(work, state, cid, region, cluster, domain, machine, address, previous
 
 def archive_state(work, state, current, record):
     root, local = safe_path(work), safe_path(state)
-    if current and current['node_ip'] == record['private_ip']:
+    if record.get('registration_current') and current and current['node_ip'] == record['private_ip']:
         print('Replacement already registered to verified VM; retaining current state (safe retry).')
         return
     history = local / 'history'

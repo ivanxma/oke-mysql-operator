@@ -370,4 +370,3 @@ as described below, then rerun replacement with the same arguments. A retry
 revalidates the cloud and keeps already-current registration/acceptance state.
 After DNS, run environment validation, the installer wait command and acceptance
 steps 06/11. No cluster readiness is inferred from DNS success.
-
