@@ -104,12 +104,17 @@ An optional demo changes cluster resources, then verifies HTTPS:
 After control-plane acceptance:
 
 ```bash
+./08-prepare-worker-network.sh          # Read-only preview
+./08-prepare-worker-network.sh --apply  # Dedicated node NSG; no shared-list changes
 ./09-build-worker-image.sh
 ./10-import-worker-image.sh
 ```
 
 These create local media and an OCI custom image. Manually launch one new SCOS
-worker from that cluster-specific image first. OL9 is not a registered worker OS
+worker from that cluster-specific image first. Attach the dedicated node NSG
+reported by step 08 to every worker. Step 08 attaches the control-plane VNIC and
+permits only stateful UDP 6081 between member VNICs; it preserves existing NSG
+memberships and does not alter shared security lists, routes or IAM. OL9 is not a registered worker OS
 for this workflow. Each node needs a unique hostname, private IP and machine
 identity. Never clone a joined node disk or reuse another cluster's Ignition.
 

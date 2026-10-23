@@ -36,6 +36,10 @@ changes to that peer as well; keep it disabled while testing London preparation.
 
 ### Network preparation — review before running
 
+Use OKD step `08-prepare-worker-network.sh` to prepare a compartment-scoped node
+NSG for OVN Geneve before manually creating workers; attach its reported NSG to
+each worker. This does not supply the cross-cluster tunnel rules.
+
 Have the networking owner prepare the approved DRG routes, private DNS and
 scoped security rules. These scripts do not run `subctl cloud prepare` or alter
 shared OCI NSGs/security lists.
