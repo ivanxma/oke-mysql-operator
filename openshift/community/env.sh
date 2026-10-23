@@ -5,7 +5,7 @@ _okd_env_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # Regional profiles use the same installer with isolated configuration and state.
 if [[ -n ${OKD_REGION:-} ]]; then
   case "$OKD_REGION" in uk-london-1|eu-frankfurt-1) ;; *) printf 'Unsupported OKD_REGION.\n' >&2; return 1 2>/dev/null || exit 1 ;; esac
-  source "$_okd_env_dir/../../regions/$OKD_REGION/env.sh" "${OKD_CONFIG_FILE:-}" || { return 1 2>/dev/null || exit 1; }
+  source "$_okd_env_dir/regions/$OKD_REGION/env.sh" "${OKD_CONFIG_FILE:-}" || { return 1 2>/dev/null || exit 1; }
   unset _okd_env_dir
   return 0 2>/dev/null || exit 0
 fi

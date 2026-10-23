@@ -14,10 +14,10 @@ Choose `uk-london-1` or `eu-frankfurt-1`:
 
 ```bash
 region=uk-london-1
-../../regions/$region/00-init-config.sh
+./regions/$region/00-init-config.sh
 ${EDITOR:-vi} ../../internal_doc/regions/$region/community.env
-source ../../regions/$region/env.sh ""
-../../regions/$region/00-check-config.sh --preparation
+source ./regions/$region/env.sh ""
+./regions/$region/00-check-config.sh --preparation
 ```
 
 Use [mandatory settings](community.env.example) and, if needed,
@@ -29,7 +29,7 @@ profile before sourcing it. **No target VM or node IP is needed yet.**
 ```bash
 ./01-prepare-host.sh
 ./02-create-bucket.sh
-source ../../regions/$region/env.sh ""
+source ./regions/$region/env.sh ""
 ./02-download-okd.sh
 ./02-download-scos-image.sh
 ./03-build-control-plane-image.sh
@@ -51,7 +51,7 @@ actual assigned private IP. Booting the image installs SCOS on its target disk.
 read -r -p "Actual VM private IP: " node_ip
 ./05-register-node-ip.sh "$node_ip" --assigned-to-target
 unset node_ip
-source ../../regions/$region/env.sh ""
+source ./regions/$region/env.sh ""
 ./01-prepare-host.sh --ssh-only
 ./05-discover-dns-view.sh
 ./05-configure-dns.sh                 # Read-only preview

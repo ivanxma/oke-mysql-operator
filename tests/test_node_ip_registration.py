@@ -77,7 +77,7 @@ class TargetRegistrationTests(unittest.TestCase):
         self.assertNotEqual(r.returncode,0);self.assertIn('CLUSTER_NAME',r.stderr)
 
     def test_scripts_help_is_local_and_requires_no_configuration(self):
-        for path in [ROOT/'openshift/community/05-register-node-ip.sh',ROOT/'regions/uk-london-1/05-register-node-ip.sh']:
+        for path in [ROOT/'openshift/community/05-register-node-ip.sh',ROOT/'openshift/community/regions/uk-london-1/05-register-node-ip.sh']:
             subprocess.run(['bash','-n',str(path)],check=True)
             r=subprocess.run(['bash',str(path),'--help'],capture_output=True,text=True)
             self.assertEqual(r.returncode,0,r.stderr)

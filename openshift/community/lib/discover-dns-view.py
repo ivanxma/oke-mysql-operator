@@ -69,7 +69,7 @@ def discover(work, compartment_id, compartment_name, region, machine, address, d
     print('This view belongs to the target VCN resolver. Admin/custom DHCP/forwarding visibility still needs validation.')
     print('Private discovery state registered: ' + str(receipt))
     print('The configuration script loads and revalidates this state automatically; no copy/paste or env reload needed.')
-    command = './regions/' + region + '/05-configure-dns.sh'
+    command = './openshift/community/regions/' + region + '/05-configure-dns.sh'
     print('Preview zone creation:\n' + command)
     print('After review, create zone and records:\n' + command + ' --apply')
     return view.id

@@ -18,9 +18,9 @@ load_config() {
   if [[ -n ${OKD_REGION:-} ]]; then
     need python3
     if [[ ${1:-} == preparation ]]; then
-      python3 "$COMMUNITY_DIR/../../regions/lib/check_config.py" --preparation || fail 'Regional preparation checks failed; no remote command was run.'
+      python3 "$COMMUNITY_DIR/regions/lib/check_config.py" --preparation || fail 'Regional preparation checks failed; no remote command was run.'
     else
-      python3 "$COMMUNITY_DIR/../../regions/lib/check_config.py" || fail 'Regional configuration checks failed; no remote command was run.'
+      python3 "$COMMUNITY_DIR/regions/lib/check_config.py" || fail 'Regional configuration checks failed; no remote command was run.'
     fi
   fi
   [[ $KUBECONFIG == /* && $KUBECONFIG != *:* ]] || fail 'KUBECONFIG must name one absolute path on the admin host.'

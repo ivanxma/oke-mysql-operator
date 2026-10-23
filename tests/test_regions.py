@@ -1,6 +1,7 @@
 """Regional configuration and deployment isolation, with no remote calls."""
 import importlib.util
 import json
+import shutil
 import os
 from pathlib import Path
 import shlex
@@ -9,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('region_checks', ROOT/'regions/lib/check_config.py')
+spec = importlib.util.spec_from_file_location('region_checks', ROOT/'openshift/community/regions/lib/check_config.py')
 checks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checks)
 
@@ -49,10 +50,10 @@ class RegionTests(unittest.TestCase):
         return result
 
     def test_shell_syntax_and_help_never_require_private_config(self):
-        for path in (ROOT/'regions').rglob('*.sh'):
+        for path in (ROOT/'openshift/community/regions').rglob('*.sh'):
             subprocess.run(['bash', '-n', str(path)], check=True)
         for region in checks.REGIONS:
-            for step in (ROOT/'regions'/region).glob('[0-9][0-9]-*.sh'):
+            for step in (ROOT/'openshift/community/regions'/region).glob('[0-9][0-9]-*.sh'):
                 if step.name in ('00-init-config.sh', '00-check-config.sh'):
                     continue
                 result = subprocess.run(['bash',str(step),'--help'], env={**self.env,'OKD_CONFIG_FILE':'/missing'},
@@ -60,9 +61,27 @@ class RegionTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('Usage:',result.stdout)
 
+    def test_init_in_relocated_clone_preserves_private_profile_location(self):
+        with tempfile.TemporaryDirectory(prefix='okd relocated clone ') as tmp:
+            clone=Path(tmp)
+            shared=clone/'openshift/community'
+            shutil.copytree(ROOT/'openshift/community/regions',shared/'regions',ignore=shutil.ignore_patterns('__pycache__'))
+            for name in ('community.env.example','community.optional.env.example'):
+                shutil.copy2(ROOT/'openshift/community'/name,shared/name)
+            command=['bash',str(shared/'regions/uk-london-1/00-init-config.sh')]
+            result=subprocess.run(command,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            profile=clone/'internal_doc/regions/uk-london-1/community.env'
+            self.assertTrue(profile.is_file())
+            self.assertEqual(profile.stat().st_mode & 0o777,0o600)
+            profile.write_text('# existing private profile\n')
+            subprocess.run(command,capture_output=True,text=True,check=True)
+            self.assertEqual(profile.read_text(),'# existing private profile\n')
+            self.assertFalse((shared/'internal_doc').exists())
+
     def test_loader_replaces_inherited_kubeconfig_workspace_and_identity(self):
         code = 'import os,json; print(json.dumps({k:os.environ[k] for k in ["KUBECONFIG","ADMIN_WORKDIR","MYSQL_EXPECTED_API_SERVER","KUBE_CONTEXT"]}))'
-        result = self.shell('source "$1/regions/uk-london-1/env.sh" ""; python3 -c ' + shlex.quote(code),
+        result = self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; python3 -c ' + shlex.quote(code),
                             KUBECONFIG='/old/config', ADMIN_WORKDIR='/old/work', KUBE_CONTEXT='old',
                             MYSQL_EXPECTED_API_SERVER='https://old:6443')
         selected = json.loads(result.stdout)
@@ -79,26 +98,26 @@ class RegionTests(unittest.TestCase):
         shim.write_text('#!/usr/bin/env bash\nif [[ ${1:-} == */regions/lib/check_config.py ]]; then exit 0; fi\nexec '+shlex.quote(sys.executable)+' "$@"\n')
         shim.chmod(0o700)
         self.env['PATH']=str(self.folder)+os.pathsep+self.env['PATH']
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; source "$1/openshift/community/lib/common.sh"; '
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; source "$1/openshift/community/lib/common.sh"; '
                    'load_config; [[ $STATE_DIR == $OKD_STATE_DIR && $OCI_REGION == uk-london-1 ]]')
 
     def test_failed_profile_selection_preserves_previous_selection(self):
         self.values['OCI_REGION']='eu-frankfurt-1'; self.write_config()
         self.shell('export OKD_REGION=eu-frankfurt-1 KUBECONFIG=/old/config; '
-                   'if source "$1/regions/uk-london-1/env.sh" "$2"; then exit 2; fi; '
+                   'if source "$1/openshift/community/regions/uk-london-1/env.sh" "$2"; then exit 2; fi; '
                    '[[ $OKD_REGION == eu-frankfurt-1 && $KUBECONFIG == /old/config ]]')
 
     def test_wrong_region_rejected(self):
         self.values['OCI_REGION']='eu-frankfurt-1'; self.write_config()
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""', success=False)
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""', success=False)
 
     def test_non_instance_principal_rejected(self):
         self.values['OCI_AUTH']='api_key'; self.write_config()
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""', success=False)
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""', success=False)
 
     def test_unset_profile_fields_do_not_inherit_old_values(self):
         self.values.pop('NODE_IP'); self.values.pop('POD_CIDR'); self.values.pop('KUBECONFIG'); self.write_config()
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; [[ -z $NODE_IP && -z $POD_CIDR && '
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; [[ -z $NODE_IP && -z $POD_CIDR && '
                    '$KUBECONFIG == /home/testadmin/london/sno/auth/kubeconfig ]]',
                    NODE_IP='192.0.2.99', POD_CIDR='10.0.0.0/8', KUBECONFIG='/old/config')
 
@@ -117,10 +136,10 @@ class RegionTests(unittest.TestCase):
         record=dict(region='uk-london-1',compartment_id=self.values['OCI_COMPARTMENT_ID'],
                     bucket='generated-bucket',namespace='generated-namespace')
         (state/'bucket.env').write_text(module.environment(record))
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; '
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; '
                    '[[ $OCI_BUCKET == generated-bucket && $OCI_NAMESPACE == generated-namespace ]]')
         record['region']='eu-frankfurt-1';(state/'bucket.env').write_text(module.environment(record))
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""', success=False)
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""', success=False)
 
     def test_empty_node_ip_allowed_only_during_preparation(self):
         cfg={**self.values,'NODE_IP':''}
@@ -139,11 +158,11 @@ class RegionTests(unittest.TestCase):
         self.config=self.folder/'community.env';self.write_config()
         self.env['OKD_CONFIG_FILE']=str(self.config)
         optional.write_text('CLIENT_CIDR=192.0.2.0/24\nOCI_REGION=eu-frankfurt-1\n')
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; [[ $CLIENT_CIDR == 192.0.2.0/24 && $OCI_REGION == uk-london-1 ]]')
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; [[ $CLIENT_CIDR == 192.0.2.0/24 && $OCI_REGION == uk-london-1 ]]')
 
     def test_no_node_ip_exported_until_generated_record_is_loaded(self):
         self.values.pop('NODE_IP');self.write_config()
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; [[ ! ${NODE_IP+x} ]]', NODE_IP='192.0.2.99')
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; [[ ! ${NODE_IP+x} ]]', NODE_IP='192.0.2.99')
         state=Path(self.values['OKD_STATE_DIR']);state.mkdir()
         import importlib.util
         spec=importlib.util.spec_from_file_location('target_reg',ROOT/'openshift/community/lib/register-node-ip.py')
@@ -152,9 +171,9 @@ class RegionTests(unittest.TestCase):
                     admin_workdir=self.values['ADMIN_WORKDIR'],cluster_name=self.values['CLUSTER_NAME'],
                     base_domain=self.values['BASE_DOMAIN'],machine_cidr=self.values['MACHINE_CIDR'],node_ip='198.51.100.22')
         (state/'node-ip.env').write_text(registration.environment(record))
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""; [[ $NODE_IP == 198.51.100.22 ]]')
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; [[ $NODE_IP == 198.51.100.22 ]]')
         record['region']='eu-frankfurt-1';(state/'node-ip.env').write_text(registration.environment(record))
-        self.shell('source "$1/regions/uk-london-1/env.sh" ""',success=False)
+        self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""',success=False)
 
     def test_valid_offline_settings(self):
         errors, _ = checks.validate(self.values, config_path=self.config)
@@ -204,7 +223,7 @@ class RegionTests(unittest.TestCase):
     def test_stale_host_state_rejected_before_ssh(self):
         state=Path(self.values['OKD_STATE_DIR']); state.mkdir()
         (state/'host.env').write_text('SSH_HOST=192.0.2.99\nSSH_USER=testadmin\nTARGET_HOST=198.51.100.20\n')
-        result=self.shell('source "$1/regions/uk-london-1/env.sh" ""; source "$1/openshift/community/lib/common.sh"; '
+        result=self.shell('source "$1/openshift/community/regions/uk-london-1/env.sh" ""; source "$1/openshift/community/lib/common.sh"; '
                           'load_host', success=False)
         self.assertIn('Saved SSH state', result.stderr)
 

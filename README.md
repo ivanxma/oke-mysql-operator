@@ -11,7 +11,7 @@ three MySQL members, two Routers, and a **10Gi PVC request per member**.
 
 Use the [OKD installation guide](openshift/community/README.md) for the numbered
 workflow, [sample configuration](openshift/community/community.env.example) and
-[technical docs](openshift/community/docs/installation.md). Regional wrappers
+[technical docs](openshift/community/docs/installation.md). [Regional wrappers](openshift/community/regions/README.md)
 select independent London/Frankfurt profiles. Real deployment data stays in
 Git-ignored `internal_doc/`.
 

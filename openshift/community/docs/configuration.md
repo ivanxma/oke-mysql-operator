@@ -4,7 +4,7 @@ The sourceable examples are [community.env.example](../community.env.example)
 and [community.optional.env.example](../community.optional.env.example). They
 contain placeholders and generic defaults, not deployment inventory.
 
-`regions/<region>/00-init-config.sh` creates a mode-600 mandatory profile and an
+`openshift/community/regions/<region>/00-init-config.sh` (from the repo root) creates a mode-600 mandatory profile and an
 optional companion under `internal_doc/regions/<region>/`. Existing files are
 retained. Fill the mandatory profile; uncomment optional overrides only when
 needed. The optional file loads first; explicit primary settings take precedence.
@@ -48,7 +48,7 @@ address.
 | `OKD_STATE_DIR` | Defaults to ignored per-region local state. |
 | `SOCKS_PORT` | Optional browser tunnel port. |
 
-Source `regions/<region>/env.sh` to select a site. The shared installation scripts
+Source `openshift/community/regions/<region>/env.sh` from the repo root to select a site. The shared installation scripts
 reuse that selection through `OKD_CONFIG_FILE`. Each region has independent
 workspace, SSH state, bucket registration and kubeconfig. Regional checks
 currently require the two configured sites to use the same authorized compartment;
@@ -76,3 +76,23 @@ Select kubeconfig through the shared environment and exported `KUBECONFIG`.
 Scripts do not fall back to `~/.kube/config`. Keep actual profiles, OCIDs,
 addresses, key paths, access records, passwords, kubeconfigs, receipts and logs
 out of the public repository. Keep the private key in its protected key directory.
+
+## Updating an existing checkout after the folder move
+
+Public OKD regional wrappers now live under `openshift/community/regions/`.
+The former root-level folder belonged to OKD; it was not an OKE installation
+component. Private profiles and generated state remain in `internal_doc/regions/`.
+
+From the repository root, with the existing profile already selected:
+
+```bash
+git pull --ff-only
+source ./openshift/community/regions/uk-london-1/env.sh "$OKD_CONFIG_FILE"
+```
+
+In a fresh shell, explicitly supply the existing private profile path instead of
+an unset `OKD_CONFIG_FILE`. If a private helper references the old root `regions/`
+path, update its selector to the new public path, or source the regional env
+script directly. Keep the same private profile, workspace, bucket and state.
+Continue at the next unfinished step; no download, host preparation, image build
+or VM creation needs repeating solely because the source folder moved.
