@@ -13,6 +13,7 @@ status=$(helm "${helm_args[@]}" list -n "$OPERATOR_NAMESPACE" --all --filter '^m
 if [[ $(printf '%s' "$status" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))') == 0 ]]; then
  helm "${helm_args[@]}" install mysql-operator "$chart" --namespace "$OPERATOR_NAMESPACE" --values "$values" --wait --timeout 600s
 else
+ printf '%s' "$status" | python3 -c 'import json,sys,os; r=json.load(sys.stdin); assert len(r)==1 and r[0]["chart"]=="mysql-operator-"+os.environ["OPERATOR_CHART_VERSION"] and r[0]["status"]=="deployed", "Existing release requires explicit review"'
  helm "${helm_args[@]}" get values mysql-operator -n "$OPERATOR_NAMESPACE" -o json > "$MYSQLK8S_GENERATED_DIR/live-operator-values.json"
  python3 - "$values" "$MYSQLK8S_GENERATED_DIR/live-operator-values.json" <<'PY'
 import json,sys
@@ -21,4 +22,5 @@ if any(b.get(k)!=v for k,v in a.items()):raise SystemExit('Existing operator sco
 PY
 fi
 oc --kubeconfig "$KUBECONFIG" --context "$KUBE_CONTEXT" wait --for=condition=Established crd/innodbclusters.mysql.oracle.com --timeout=120s
+oc --kubeconfig "$KUBECONFIG" --context "$KUBE_CONTEXT" -n "$OPERATOR_NAMESPACE" rollout status deployment/mysql-operator --timeout=600s
 echo 'Regional operator prepared for its dedicated database namespace.'

@@ -62,6 +62,8 @@ Step 07 waits for ONLINE count and Router rollout and validates worker placement
 Step 08 uses authenticated MySQL Shell on both sites to require ClusterSet HEALTHY,
 London PRIMARY, Frankfurt REPLICA and Frankfurt super_read_only. Step 09 writes a
 UUID row on London and waits for it on Frankfurt, retaining it for audit.
+Step 10 audits each actual PVC/PV/OCI volume and exclusive worker attachment in
+the selected compartment and region, saving private evidence.
 Replication is asynchronous; no failover/promotion is automatic. A replica Router
 may route to the global primary according to ClusterSet routing policy; verification
 connects directly to the Frankfurt member to establish replica read-only state.

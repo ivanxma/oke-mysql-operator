@@ -176,6 +176,29 @@ def prepare_storage():
  import oci_storage
  oci_storage.main()
 
+def audit_storage():
+ import oci
+ import oci_storage
+ cid,_,region,compute,_=oci_storage.clients()
+ storage=oci.core.BlockstorageClient({'region':region},signer=oci.auth.signers.InstancePrincipalsSecurityTokenSigner(),timeout=(10,30),retry_strategy=oci.retry.NoneRetryStrategy())
+ inventory=oci_storage.scope();workers={n['instance_id'] for n in inventory['nodes'] if n['node']['metadata']['labels'].get('workload')=='mysql-cluster' and not any(k in n['node']['metadata']['labels'] for k in ('node-role.kubernetes.io/master','node-role.kubernetes.io/control-plane'))}
+ ns=os.environ['MYSQL_NAMESPACE'];name=os.environ['MYSQL_CLUSTER_NAME']
+ claims=[p for p in get('pvc',namespace=ns)['items'] if p['metadata']['name'].startswith('datadir-'+name+'-')]
+ require(len(claims)==int(os.environ['MYSQL_INSTANCES']),'Unexpected database PVC count.')
+ result=[]
+ for claim in claims:
+  require(claim['status'].get('phase')=='Bound','Database PVC is not Bound.')
+  pv=get('pv',claim['spec']['volumeName']);require(pv['spec']['claimRef']['uid']==claim['metadata']['uid'],'PVC/PV identity mismatch.')
+  require(pv['spec']['csi']['driver']=='blockvolume.csi.oraclecloud.com','Unexpected CSI driver.')
+  volume=storage.get_volume(pv['spec']['csi']['volumeHandle']).data
+  require(volume.compartment_id==cid and volume.lifecycle_state=='AVAILABLE','Volume scope/state mismatch.')
+  attachments=oci.pagination.list_call_get_all_results(compute.list_volume_attachments,compartment_id=cid,volume_id=volume.id).data
+  active=[a for a in attachments if a.lifecycle_state=='ATTACHED']
+  require(len(active)==1 and active[0].compartment_id==cid and active[0].instance_id in workers,'Volume is not attached exclusively to an authorized worker.')
+  result.append(dict(namespace=ns,cluster=name,pvc=claim['metadata']['name'],volume_id=volume.id,size_gib=volume.size_in_gbs,region=region,compartment_id=cid,worker_instance_id=active[0].instance_id))
+ state_file('volume-audit.json',result)
+ print('VERIFIED: '+str(len(result))+' database volume(s) in selected compartment/region, attached to selected workers.',flush=True)
+
 def main(action):
  guard()
  if action=='label':
@@ -188,6 +211,7 @@ def main(action):
  elif action=='wait':wait_cluster()
  elif action=='verify':verify()
  elif action=='replication-test':replication_test()
+ elif action=='audit':audit_storage()
  elif action=='validate':rt.capacity(get('nodes'),oc('get','pods','-A','-o','json',json_output=True))
  else:raise ValueError('Unknown operation.')
 

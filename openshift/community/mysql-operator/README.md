@@ -46,6 +46,8 @@ Create London first, then Frankfurt:
 # Back in London's generated MySQL folder:
 ./08-verify-clusterset.sh
 ./09-test-replication.sh
+# In each regional MySQL folder, audit its volume/worker attachment:
+./10-audit-storage.sh
 ```
 
 Every launcher selects its regional OKD environment and exported `KUBECONFIG`.
