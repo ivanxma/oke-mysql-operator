@@ -38,6 +38,26 @@ class SubmarinerTests(unittest.TestCase):
 
     def enable_peer(self):
         self.w.env['SUBMARINER_ENABLE_PEER']='true';self.w.env['SUBMARINER_PEER_INSTALLATION_VERIFIED']='true'
+        self.w.env['SUBMARINER_PEER_NETWORK_REVIEWED']='true'
+
+    def test_peer_mutations_require_separate_network_review_before_health_or_writes(self):
+        self.enable_peer();self.w.env['SUBMARINER_PEER_NETWORK_REVIEWED']='false'
+        self.w.health=Mock();self.w.sub=Mock()
+        with self.assertRaisesRegex(ValueError,'peer gateway'):self.w.execute('peer')
+        self.w.health.assert_not_called();self.w.sub.assert_not_called()
+
+    def test_local_review_checks_schema_before_updating_private_flags(self):
+        config=self.root/'submariner.env'
+        keys=('SUBMARINER_LONDON_INSTALLATION_VERIFIED','SUBMARINER_COMPATIBILITY_REVIEWED','SUBMARINER_NETWORK_REVIEWED')
+        config.write_text(''.join(k+'=false\n' for k in keys));config.chmod(0o600)
+        self.w.env['SUBMARINER_CONFIG_FILE']=str(config);self.w.sub=Mock();self.w.validation=Mock(return_value={'target':self.target})
+        self.w.selection=Mock(return_value=(['oc'],self.kube,'context'))
+        self.w.read=Mock(return_value={'items':[{'metadata':{'name':'ovn-test'},'spec':{'containers':[{'name':'nbdb'}]},'status':{'phase':'Running'}}]})
+        with patch.object(module,'run',return_value='6.0.0'),self.assertRaisesRegex(ValueError,'schema'):self.w.review_local()
+        self.assertIn('=false',config.read_text());self.w.validation.assert_not_called()
+        with patch.object(module,'run',return_value='7.18.0'):self.w.review_local()
+        self.assertNotIn('=false',config.read_text())
+        self.assertEqual(json.loads((self.w.state/'prerequisite-review.json').read_text())['cluster_uid'],'target-uid')
 
     def test_download_checksum_mismatch_refused_before_binary_execution(self):
         import io

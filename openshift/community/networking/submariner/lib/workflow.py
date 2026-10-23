@@ -124,6 +124,36 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
     def enabled(self, key):
         return self.env.get(key)=='true'
 
+    def review_local(self):
+        """Explicit local-network acknowledgement plus live compatibility/health checks."""
+        require(not self.enabled('SUBMARINER_ENABLE_PEER'),'Local prerequisite review requires peer enrollment disabled.')
+        self.sub(['diagnose','k8s-version'])
+        base,_,_=self.selection()
+        pods=self.read(False,'get','pods','-n','openshift-ovn-kubernetes')['items']
+        candidates=[p for p in pods if p.get('status',{}).get('phase')=='Running' and
+                    any(c['name']=='nbdb' for c in p['spec']['containers'])]
+        require(bool(candidates),'No running OVN Northbound DB container found.')
+        schema=run(base+['-n','openshift-ovn-kubernetes','exec',candidates[0]['metadata']['name'],'-c','nbdb','--',
+                         'ovsdb-client','get-schema-version','unix:/var/run/ovn/ovnnb_db.sock','OVN_Northbound']).strip()
+        require(bool(re.fullmatch(r'\d+\.\d+\.\d+',schema)) and tuple(map(int,schema.split('.')))>=(6,1,0),
+                'OVN Northbound schema must be >=6.1.0.')
+        for name in ('SUBMARINER_LONDON_INSTALLATION_VERIFIED','SUBMARINER_COMPATIBILITY_REVIEWED','SUBMARINER_NETWORK_REVIEWED'):
+            self.env[name]='true'
+        info=self.validation()
+        config=Path(self.env['SUBMARINER_CONFIG_FILE'])
+        require(not config.is_symlink() and config.stat().st_mode & 0o077==0,'Private networking config must be protected.')
+        text=config.read_text()
+        for key in ('SUBMARINER_LONDON_INSTALLATION_VERIFIED','SUBMARINER_COMPATIBILITY_REVIEWED','SUBMARINER_NETWORK_REVIEWED'):
+            text,count=re.subn(r'(?m)^(?:export\s+)?'+key+r'=.*$',key+'=true',text)
+            require(count==1,'Need exactly one '+key+' setting in selected private profile.')
+        temporary=config.with_name(config.name+'.tmp-'+secrets.token_hex(4))
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'w') as stream:stream.write(text)
+        temporary.replace(config)
+        private_write(self.state/'prerequisite-review.json',dict(cluster_uid=info['target']['uid'],ovn_nb_schema=schema,
+                     version=self.version,scope='London only; operator acknowledged local network review; peer paths unverified'))
+        print('PASS: version diagnostic, OVN schema '+schema+', cluster health and worker gateway. Local prerequisite review recorded; peer networking remains unverified.')
+
     def peer_allowed(self):
         require(self.enabled('SUBMARINER_ENABLE_PEER'),'Peer phase disabled: London-only mode. Set SUBMARINER_ENABLE_PEER=true only when ready to change the peer.')
         require(self.enabled('SUBMARINER_PEER_INSTALLATION_VERIFIED'),'Verify the peer installation before enrollment.')
@@ -278,6 +308,10 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
         os.umask(0o077)
         if action=='initialize': return self.initialize()
         if action=='download': return self.download()
+        if action=='review': return self.review_local()
+        if action in ('peer','verify'):
+            self.peer_allowed()
+            require(self.enabled('SUBMARINER_PEER_NETWORK_REVIEWED'),'Review and record peer gateway routes/ports/MTU before enrollment or traffic tests.')
         if action in ('status','gather'):
             saved=json.loads((self.state/'clusters.json').read_text())
             for peer in ([False,True] if self.enabled('SUBMARINER_ENABLE_PEER') else [False]):

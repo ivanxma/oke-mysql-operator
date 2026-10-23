@@ -88,15 +88,19 @@ The mandatory profile contains the pinned version, unique target ID, gateway and
 review settings. Optional peer kubeconfig/API/machine CIDR/gateway/context settings
 are kept separately. Keep `SUBMARINER_ENABLE_PEER=false` until the peer is ready.
 
-Review exact-version compatibility and network requirements before setting the
-corresponding review flags to true. Discovery does not certify compatibility or
+Review the local network requirements, then run step 02 with
+`--record-reviewed-prerequisites` to explicitly acknowledge that review. This mode
+checks the pinned client/server version diagnostic, live OVN schema and cluster
+health, then records the review flags in private configuration. The default step
+02 validates without changing configuration. Remote tunnel paths remain unverified
+until the separate peer-network review. Discovery does not certify compatibility or
 prove remote routing. All sensitive settings and broker credentials remain private.
 
 ## Phase 1 — London only
 
 ```bash
 ./01-install-subctl.sh
-./02-validate-environment.sh
+./02-validate-environment.sh --record-reviewed-prerequisites
 ./03-label-london-gateway.sh
 ./04-deploy-london-broker.sh
 ./05-join-london.sh
@@ -127,7 +131,9 @@ credentials to force a rerun. Step 04 reuses an owned saved credential file.
 Full two-site connectivity requires Submariner on both clusters. Set these in
 the private networking config only when the peer can be changed:
 
-- `SUBMARINER_ENABLE_PEER=true` and `SUBMARINER_PEER_INSTALLATION_VERIFIED=true`.
+- `SUBMARINER_ENABLE_PEER=true`, `SUBMARINER_PEER_INSTALLATION_VERIFIED=true`
+  and `SUBMARINER_PEER_NETWORK_REVIEWED=true` after actual peer routes/ports/MTU
+  have been reviewed. A London-only review does not authorize peer enrollment.
 - Peer kubeconfig, exact expected API, machine CIDR, unique ID and exact eligible
   worker gateway. Leave its context empty to select the current context in that
   explicit file, or pin the desired context name.

@@ -35,4 +35,6 @@ cd generated/openshift/uk-london-1/jumphost/networking/submariner
 Step 00 discovers CIDRs and eligible workers. A single control-plane node is not
 used as the gateway by this workflow. Provision a cluster-matched SCOS worker
 with OKD steps `09-build-worker-image.sh` and `10-import-worker-image.sh`, then
-rerun initialization after it joins. Compatibility/network review remains explicit.
+rerun initialization after it joins. After reviewing local network prerequisites, step 02 with
+`--record-reviewed-prerequisites` checks versions/OVN/health and records the private
+review settings. Peer gateway networking needs its own review before enrollment.
