@@ -37,12 +37,89 @@ class Workflow:
         self.env=dict(os.environ if env is None else env)
         self.state=Path(self.env['SUBMARINER_STATE_DIR'])
         work=Path(self.env['ADMIN_WORKDIR'])
+        profile_state=Path(self.env.get('OKD_STATE_DIR','/nonexistent-profile-state'))
         require(self.state.is_absolute() and '..' not in self.state.parts and
-                work/'internal_doc' in self.state.parents,'Keep networking state inside this admin workspace\x27s internal_doc.')
+                (profile_state in self.state.parents or work/'internal_doc' in self.state.parents),
+                'Keep networking state under the selected private OKD_STATE_DIR; explicit legacy admin state remains supported.')
+        require(not self.state.is_symlink(),'Refusing symlink networking state.')
         self.version=self.env.get('SUBMARINER_VERSION','0.24.2')
         require(bool(re.fullmatch(r'\d+\.\d+\.\d+',self.version)),'Pin a stable Submariner version.')
         self.bin=self.state/'bin/subctl'
         self.broker=self.state/'broker-info.subm'
+
+    def initialize(self):
+        """Discover parameters before any gateway selection or network mutation."""
+        require(self.env.get('OCI_REGION')=='uk-london-1','Initialize the London profile first.')
+        base,_,_=self.selection()
+        require(run(base+['get','--raw=/readyz']).strip()=='ok','Selected API is not ready.')
+        network=self.read(False,'get','network.config.openshift.io','cluster')
+        nodes=self.read(False,'get','nodes')['items']
+        operators=self.read(False,'get','clusteroperators')['items']
+        pools=self.read(False,'get','machineconfigpools')['items']
+        uid=self.read(False,'get','namespace','kube-system')['metadata']['uid']
+        def settled(items, expected):
+            return bool(items) and all(all({c['type']:c['status'] for c in item.get('status',{}).get('conditions',[])}.get(k)==v
+                                          for k,v in expected.items()) for item in items)
+        ready=settled(nodes,{'Ready':'True'}) and settled(operators,{'Available':'True','Progressing':'False','Degraded':'False'}) and settled(pools,{'Updated':'True','Updating':'False','Degraded':'False'})
+        workers=[n['metadata']['name'] for n in nodes if
+                 n['metadata'].get('labels',{}).get('kubernetes.io/os')=='linux' and
+                 'node-role.kubernetes.io/worker' in n['metadata'].get('labels',{}) and
+                 not any(k in n['metadata'].get('labels',{}) for k in ('node-role.kubernetes.io/master','node-role.kubernetes.io/control-plane')) and
+                 not n['spec'].get('unschedulable') and not n['spec'].get('taints') and
+                 any(c['type']=='Ready' and c['status']=='True' for c in n['status'].get('conditions',[]))]
+        profile=Path(self.env['OKD_CONFIG_FILE']).parent
+        config=Path(self.env['SUBMARINER_CONFIG_FILE'])
+        require(config.parent==profile and not config.is_symlink(),'Keep Submariner config beside the selected private OKD profile.')
+        discovery=self.state/'discovery.json'
+        if discovery.exists():
+            require(not discovery.is_symlink() and json.loads(discovery.read_text())['uid']==uid,
+                    'Networking discovery belongs to another cluster; preserve and review before reuse.')
+        values=dict(SUBMARINER_VERSION=self.version,SUBMARINER_TARGET_ID=self.env['CLUSTER_NAME'],
+                    SUBMARINER_TARGET_GATEWAY=workers[0] if len(workers)==1 else '',
+                    SUBMARINER_LONDON_INSTALLATION_VERIFIED=str(ready).lower(),
+                    SUBMARINER_COMPATIBILITY_REVIEWED='false',SUBMARINER_NETWORK_REVIEWED='false',SUBMARINER_ENABLE_PEER='false')
+        import shlex
+        if not config.exists():
+            fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'w') as stream:
+                stream.write('# Generated Submariner profile. Live parameters discovered; reviews are explicit.\n')
+                for k,v in values.items():stream.write(k+'='+shlex.quote(v)+'\n')
+        else:
+            require(config.stat().st_mode & 0o077==0,'Private Submariner config must restrict group/other access.')
+            text=config.read_text()
+            # Fill only an empty generated gateway when a single actual worker appears.
+            if text.startswith('# Generated Submariner profile.') and len(workers)==1:
+                text=re.sub(r"(?m)^SUBMARINER_TARGET_GATEWAY=(?:''|\"\")?$",
+                            'SUBMARINER_TARGET_GATEWAY='+shlex.quote(workers[0]),text)
+                config.write_text(text)
+        optional=config.with_name(config.stem+'.optional.env')
+        require(not optional.is_symlink(),'Refusing symlink optional configuration.')
+        if not optional.exists():
+            fd=os.open(optional,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'w') as stream:
+                stream.write((Path(__file__).parents[1]/'config.optional.env.example').read_text())
+        private_write(discovery,dict(uid=uid,api=self.env['SUBMARINER_TARGET_API'],network=network['spec'],
+                                    machine_cidr=self.env['MACHINE_CIDR'],worker_candidates=workers,health_settled=ready))
+        directory=profile/'networking/submariner'
+        require(not directory.is_symlink() and directory.resolve()==profile.resolve()/'networking/submariner','Refusing symlink execution folder.')
+        directory.mkdir(parents=True,exist_ok=True,mode=0o700)
+        for source in Path(__file__).parents[1].glob('[0-9][0-9]-*.sh'):
+            target=directory/source.name
+            marker='# Generated Submariner launcher.'
+            require(not target.is_symlink() and (not target.exists() or marker in target.read_text()),'Preserve unrecognized private launcher: '+source.name)
+            target.write_text('''#!/usr/bin/env bash
+'''+marker+'''
+set -euo pipefail
+profile=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+repo=$(cd -- "$profile/../../../.." && pwd)
+source "$profile/00-env.sh"
+exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" "$@"
+''')
+            target.chmod(0o700)
+        print('Private Submariner execution folder: '+str(directory))
+        print('Live CIDRs/API/cluster identity discovered; existing settings retained. No cluster/OCI changes.')
+        print('Eligible worker gateways: '+(', '.join(workers) or 'NONE — create/join a SCOS worker before step 03.'))
+        print('Next: run ./01-install-subctl.sh there; review compatibility/networking before steps 02–05.')
 
     def enabled(self, key):
         return self.env.get(key)=='true'
@@ -199,6 +276,7 @@ class Workflow:
 
     def execute(self, action):
         os.umask(0o077)
+        if action=='initialize': return self.initialize()
         if action=='download': return self.download()
         if action in ('status','gather'):
             saved=json.loads((self.state/'clusters.json').read_text())

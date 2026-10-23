@@ -62,39 +62,41 @@ to OCI route tables. Validate actual packet paths, DNS and policy behavior.
 
 ## Configure privately on the administration host
 
-Change to the synced source directory, then:
+From the cloned repository root, select the existing generated installation and
+initialize networking:
 
 ```bash
-bash
 source ./generated/openshift/uk-london-1/jumphost/00-env.sh
-submariner_config="$(dirname -- "$OKD_CONFIG_FILE")/submariner.env"
-cp -n openshift/community/networking/submariner/config.env.example \
-  "$submariner_config"
-chmod 600 "$submariner_config"
-${EDITOR:-vi} "$submariner_config"
-unset submariner_config
+./openshift/community/networking/submariner/00-initialize.sh
+cd generated/openshift/uk-london-1/jumphost/networking/submariner
 ```
 
-A filled `generated/openshift/uk-london-1/jumphost/community.env` must already exist
-in this checkout (the same regional inputs as the London installation).
-The environment script selects the London profile and its exported KUBECONFIG;
-it never uses `~/.kube/config`. Kubeconfig paths refer to files on this admin
-host. Credentials are not copied to the Mac by these networking scripts.
+Step 00 reads the actual API, cluster UID, CIDRs, health and eligible workers. It
+creates private `submariner.env`, `submariner.optional.env`, numbered launchers
+and discovery state beside the selected installation profile. It does not change
+Kubernetes or OCI. No Mac file upload is required. Existing settings are retained;
+rerun after a worker joins to fill an empty generated gateway when exactly one
+eligible worker is discovered. A control-plane node is never selected automatically.
 
-Set the exact London gateway worker name and a unique cluster ID. After checking
-acceptance, compatibility and networking, set the three corresponding review
-flags to `true`. Keep `SUBMARINER_ENABLE_PEER=false`. Sensitive paths, node names,
-endpoints and records stay in private configuration and generated state.
+Use the generated networking folder for subsequent commands. The launchers select
+the existing shared environment and `KUBECONFIG`; `~/.kube/config` is never used.
+The mandatory profile contains the pinned version, unique target ID, gateway and
+review settings. Optional peer kubeconfig/API/machine CIDR/gateway/context settings
+are kept separately. Keep `SUBMARINER_ENABLE_PEER=false` until the peer is ready.
+
+Review exact-version compatibility and network requirements before setting the
+corresponding review flags to true. Discovery does not certify compatibility or
+prove remote routing. All sensitive settings and broker credentials remain private.
 
 ## Phase 1 — London only
 
 ```bash
-./openshift/community/networking/submariner/01-install-subctl.sh
-./openshift/community/networking/submariner/02-validate-environment.sh
-./openshift/community/networking/submariner/03-label-london-gateway.sh
-./openshift/community/networking/submariner/04-deploy-london-broker.sh
-./openshift/community/networking/submariner/05-join-london.sh
-./openshift/community/networking/submariner/06-show-status.sh
+./01-install-subctl.sh
+./02-validate-environment.sh
+./03-label-london-gateway.sh
+./04-deploy-london-broker.sh
+./05-join-london.sh
+./06-show-status.sh
 ```
 
 | Step | Behavior |
@@ -127,10 +129,10 @@ the private networking config only when the peer can be changed:
   explicit file, or pin the desired context name.
 
 ```bash
-./openshift/community/networking/submariner/02-validate-environment.sh
-./openshift/community/networking/submariner/07-join-peer.sh
-./openshift/community/networking/submariner/06-show-status.sh
-./openshift/community/networking/submariner/08-verify-connectivity.sh
+./02-validate-environment.sh
+./07-join-peer.sh
+./06-show-status.sh
+./08-verify-connectivity.sh
 ```
 
 Step 07 labels the peer worker and joins that peer to the London broker. Both
@@ -153,13 +155,13 @@ mesh do not automatically replicate MySQL data or change MySQL Router behavior.
 ## Diagnostics and private state
 
 ```bash
-./openshift/community/networking/submariner/09-gather-diagnostics.sh
+./09-gather-diagnostics.sh
 ```
 
 The default state directory is
-`$ADMIN_WORKDIR/internal_doc/networking/submariner`. It holds the pinned client,
+`$OKD_STATE_DIR/networking/submariner`. It holds the pinned client,
 cluster UID receipts, `broker-info.subm`, broker ownership receipt and test/log
-outputs. Broker files contain sensitive credentials/IPsec material. Keep the
+outputs. Explicitly configured legacy state remains in place. Broker files contain sensitive credentials/IPsec material. Keep the
 folder mode 700, files private and every artifact out of Git. Do not publish a
 support archive without reviewing it for credentials and infrastructure details.
 

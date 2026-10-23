@@ -161,6 +161,56 @@ class SubmarinerTests(unittest.TestCase):
         self.assertEqual(patches[1]['path'],'/metadata/resourceVersion')
         self.assertEqual(patches[2]['path'],'/metadata/labels/submariner.io~1gateway')
 
+    def initialization(self, worker=True):
+        profile=self.root/'generated/openshift/uk-london-1/jumphost';profile.mkdir(parents=True,exist_ok=True)
+        self.w.env.update(OKD_CONFIG_FILE=str(profile/'community.env'),SUBMARINER_CONFIG_FILE=str(profile/'submariner.env'),CLUSTER_NAME='okd-test')
+        def resource(peer,*args):
+            if args==('get','namespace','kube-system'):return {'metadata':{'uid':'target-uid'}}
+            if args==('get','network.config.openshift.io','cluster'):return {'spec':{'networkType':'OVNKubernetes','clusterNetwork':[{'cidr':'10.132.0.0/14'}],'serviceNetwork':['172.31.0.0/16']}}
+            if args==('get','clusteroperators'):return {'items':[{'status':{'conditions':[{'type':'Available','status':'True'},{'type':'Progressing','status':'False'},{'type':'Degraded','status':'False'}]}}]}
+            if args==('get','machineconfigpools'):return {'items':[{'status':{'conditions':[{'type':'Updated','status':'True'},{'type':'Updating','status':'False'},{'type':'Degraded','status':'False'}]}}]}
+            labels={'kubernetes.io/os':'linux','node-role.kubernetes.io/worker':''}
+            if not worker:labels['node-role.kubernetes.io/master']=''
+            return {'items':[{'metadata':{'name':'selected-worker','labels':labels},'spec':{},'status':{'conditions':[{'type':'Ready','status':'True'}]}}]}
+        self.w.read=Mock(side_effect=resource);self.w.selection=Mock(return_value=(['oc'],self.kube,'context'))
+        return profile
+
+    def test_initialization_discovers_worker_without_cluster_changes(self):
+        profile=self.initialization()
+        self.w.sub=Mock();self.w.label=Mock()
+        with patch.object(module,'run',return_value='ok'):self.w.initialize()
+        text=(profile/'submariner.env').read_text()
+        self.assertIn('SUBMARINER_TARGET_GATEWAY=selected-worker',text)
+        self.assertIn('SUBMARINER_COMPATIBILITY_REVIEWED=false',text)
+        self.assertIn('SUBMARINER_ENABLE_PEER=false',text)
+        self.assertTrue((profile/'networking/submariner/01-install-subctl.sh').exists())
+        self.assertEqual((profile/'submariner.env').stat().st_mode & 0o777,0o600)
+        self.w.sub.assert_not_called();self.w.label.assert_not_called()
+
+    def test_initialization_does_not_auto_select_control_plane(self):
+        profile=self.initialization(worker=False)
+        with patch.object(module,'run',return_value='ok'):self.w.initialize()
+        self.assertIn("SUBMARINER_TARGET_GATEWAY=''",(profile/'submariner.env').read_text())
+        self.initialization(worker=True)
+        with patch.object(module,'run',return_value='ok'):self.w.initialize()
+        self.assertIn('SUBMARINER_TARGET_GATEWAY=selected-worker',(profile/'submariner.env').read_text())
+
+    def test_initialization_preserves_manual_settings_and_rejects_another_cluster(self):
+        profile=self.initialization()
+        with patch.object(module,'run',return_value='ok'):self.w.initialize()
+        original='SUBMARINER_TARGET_ID=custom-id\nSUBMARINER_TARGET_GATEWAY=explicit-worker\n'
+        (profile/'submariner.env').write_text(original)
+        with patch.object(module,'run',return_value='ok'):self.w.initialize()
+        self.assertEqual((profile/'submariner.env').read_text(),original)
+        module.private_write(self.w.state/'discovery.json',{'uid':'different-cluster'})
+        with patch.object(module,'run',return_value='ok'),self.assertRaisesRegex(ValueError,'another cluster'):self.w.initialize()
+
+    def test_new_runtime_state_is_bound_to_generated_profile(self):
+        env=dict(self.env,OKD_STATE_DIR=str(self.root/'generated/profile/.state'),SUBMARINER_STATE_DIR=str(self.root/'generated/profile/.state/networking/submariner'))
+        self.assertEqual(module.Workflow(env).state,Path(env['SUBMARINER_STATE_DIR']))
+        env['SUBMARINER_STATE_DIR']=str(self.root/'unrelated')
+        with self.assertRaises(ValueError):module.Workflow(env)
+
     def test_diagnostics_do_not_require_healthy_operators(self):
         module.private_write(self.w.state/'clusters.json',{'target':self.target})
         self.w.health=Mock(side_effect=ValueError('unhealthy'))

@@ -113,6 +113,17 @@ worker from that cluster-specific image first. OL9 is not a registered worker OS
 for this workflow. Each node needs a unique hostname, private IP and machine
 identity. Never clone a joined node disk or reuse another cluster's Ignition.
 
+For a dedicated Submariner lab gateway, use a compatible x86 OCI shape; the
+recommended starting point is **VM.Standard.E5.Flex, 2 OCPU / 16 GB RAM / 150 GB
+boot**. Confirm the imported image lists that shape. Use UEFI with Secure Boot
+disabled, the cluster's private subnet, a unique hostname and no public IP. The
+worker image installs to its new VM boot disk. It is distinct from the control-plane
+image and belongs to the selected cluster.
+
+Before boot, confirm worker → control-plane TCP 6443/22623, required kubelet TCP
+10250 and OVN Geneve UDP 6081 between cluster nodes, plus DNS/NTP/HTTPS egress.
+Submariner gateway-to-gateway UDP 4500 and ESP are separate cross-cluster rules.
+
 Read-only discovery:
 
 ```bash
