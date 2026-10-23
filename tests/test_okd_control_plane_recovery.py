@@ -19,7 +19,8 @@ class RecoveryPlanTests(unittest.TestCase):
         self.operator={'spec':{'managementState':'Managed'},'status':{
             'latestAvailableRevision':2,'nodeStatuses':[{'nodeName':'node.test','currentRevision':0}]}}
         self.pods=[{'metadata':{'name':'installer-2-node.test'},'spec':{'nodeName':'node.test'},
-                    'status':{'phase':'Failed','containerStatuses':[{'state':{'terminated':{'message':'Client.Timeout exceeded'}}}]}}]
+                    'status':{'phase':'Failed','containerStatuses':[{'state':{'terminated':{
+                        'message':'Get https://192.0.2.20:6443/api/v1/pods: Client.Timeout exceeded'}}}]}}]
 
     def test_confirmed_timeout_failure_can_be_retried(self):
         self.assertEqual(module.recovery_plan(self.operator,self.pods,'node.test')['revision'],2)
@@ -45,6 +46,11 @@ class RecoveryPlanTests(unittest.TestCase):
 
     def test_other_installer_failure_is_refused(self):
         self.pods[0]['status']['containerStatuses']=[]
+        with self.assertRaisesRegex(ValueError,'not a confirmed API timeout'):
+            module.recovery_plan(self.operator,self.pods,'node.test')
+
+    def test_registry_timeout_is_not_an_api_timeout(self):
+        self.pods[0]['status']['containerStatuses'][0]['state']['terminated']['message']='Get https://registry.invalid/v2/: Client.Timeout exceeded'
         with self.assertRaisesRegex(ValueError,'not a confirmed API timeout'):
             module.recovery_plan(self.operator,self.pods,'node.test')
 

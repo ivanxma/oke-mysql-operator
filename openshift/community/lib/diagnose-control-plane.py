@@ -32,7 +32,8 @@ def recovery_plan(operator, pods, node_name):
     if not current or any(p.get('status',{}).get('phase') != 'Failed' for p in current):
         raise ValueError('Latest installer is not confirmed failed; allow active/completed revisions to reconcile')
     evidence = ' '.join(str(p.get('status',{})) for p in current).lower()
-    if not any(term in evidence for term in ('timeout','timed out','deadline exceeded')):
+    if (not any(term in evidence for term in ('client.timeout','timed out','deadline exceeded')) or
+            not re.search(r'https://[^\s"\\]+/(?:api/|apis/)',evidence)):
         raise ValueError('Installer failure is not a confirmed API timeout; investigate its actual cause')
     return dict(revision=revision,current_revision=state.get('currentRevision',0),
                 failed_installers=[p['metadata']['name'] for p in current])
