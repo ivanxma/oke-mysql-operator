@@ -83,5 +83,18 @@ class NodeProbeTests(unittest.TestCase):
             self.assertEqual(saved.stat().st_mode & 0o777,0o600)
             self.assertIn('not a cluster-readiness result',output.getvalue())
 
+    def test_missing_rotated_log_is_not_presented_as_etcd_fatal_error(self):
+        report=dict(address='192.0.2.20',compartment='ocid1.compartment.synthetic',finding='bootstrap pending',
+                    services={'output':'active'},containers=[dict(name='etcd',state='CONTAINER_EXITED',
+                    logs={'exit':1,'output':'level=fatal msg="failed resolving missing log symlinks"'})])
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp)/'ssh_config').write_text('synthetic')
+            output=io.StringIO()
+            with patch.object(node.subprocess,'run',side_effect=[subprocess.CompletedProcess([],0,'hostname 192.0.2.20\n',''),
+                subprocess.CompletedProcess([],0,json.dumps(report),'')]),contextlib.redirect_stdout(output):
+                node.collect(temp,'192.0.2.20','ocid1.compartment.synthetic')
+            self.assertIn('Log collection unavailable',output.getvalue())
+            self.assertNotIn('level=fatal',output.getvalue())
+
 
 if __name__=='__main__':unittest.main()

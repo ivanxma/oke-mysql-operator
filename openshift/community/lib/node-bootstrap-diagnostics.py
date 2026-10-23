@@ -101,6 +101,9 @@ def collect(state,address,compartment):
     print('Services: '+report['services']['output'],flush=True)
     for container in report['containers']:
         print(container['name']+': '+str(container['state']),flush=True)
+        if 'logs' in container and container['logs'].get('exit') != 0:
+            print('  Log collection unavailable; collector errors are not container log evidence. Inspect the private report.',flush=True)
+            continue
         errors=[line for line in container.get('logs',{}).get('output','').splitlines()
                 if re.search(r'connection refused|timed out|deadline exceeded|error|failed',line,re.I)]
         for line in errors[-2:]:print('  '+line[:350],flush=True)
