@@ -473,8 +473,8 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
         elif action=='verify':
             self.peer_allowed()
             require('peer' in info,'Enroll two distinct clusters before verification.')
-            self.sub(['verify','--only','connectivity,service-discovery','--disruptive-tests=false','--verbose',
-                      '--junit-report',str(self.state/'verify.xml')],both=True)
+            from verifier import verify
+            verify(self)
         elif action=='gather':
             self.sub(['gather'])
             if 'peer' in info: self.sub(['gather'],peer=True)

@@ -33,7 +33,8 @@ changes to that peer as well; keep it disabled while testing London preparation.
   credentials, control plane, pods, service network and storage.
 - Cluster-admin privileges for Submariner CRDs, RBAC, gateway DaemonSets and
   OpenShift SCC integration. `subctl` handles its OpenShift deployment security;
-  do not grant broad workload SCC privileges manually.
+  do not grant broad workload SCC privileges manually. The verifier uses temporary,
+  namespace-only nonroot-v2 access for its own test service accounts as described below.
 
 ### Network preparation — review before running
 
@@ -184,6 +185,19 @@ identical context names in the two installation files cannot select the wrong
 cluster. The verifier creates temporary test workloads/RBAC on participating
 clusters; review and account for those writes before running it. The private
 JUnit result is `verify.xml` under the networking state directory.
+
+The pinned upstream verifier fixes test container UID to 10000, which falls
+outside OKD's allocated project UID range. Step 08 streams native progress and
+recognizes only namespaces created by that verifier process. It checks fresh
+creation time, upstream test labels and namespace UID before creating a namespaced
+RoleBinding for that namespace's default service account to the built-in
+`nonroot-v2` SCC role. This permits nonroot test containers; it does not grant
+privileged/anyuid access, alter SCC definitions or touch application accounts.
+Bindings are recorded privately and removed with UID guards after the run; test
+namespace deletion also removes them. Existing namespaces from earlier runs are
+rejected. Native verifier cleanup retains responsibility for test workloads.
+See [the pinned upstream framework](https://github.com/submariner-io/shipyard/blob/v0.24.2/test/e2e/framework/framework.go).
+
 
 Acceptance: remote connections connected in both directions, verifier suites
 pass, and existing OKD workloads remain healthy. A mesh failure must not be
