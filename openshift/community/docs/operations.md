@@ -170,7 +170,23 @@ Stopping it does not stop installation. Do not repeat image generation or import
 ./05-diagnose-control-plane.sh
 ```
 
-The script validates the selected kubeconfig/API, workspace domain and single
+If authenticated API queries cannot complete, collect node evidence over SSH:
+
+```bash
+./05-diagnose-control-plane.sh --node-bootstrap
+```
+
+This read-only mode verifies the registered private IP and selected compartment against target metadata,
+then inspects bootstrap services, listening ports and recent API/etcd container
+logs. It needs SSH and passwordless sudo, but not a working Kubernetes API or OCI
+console-history permission. Credential-like log lines are omitted. The protected
+JSON report is saved under `OKD_STATE_DIR`; it changes no target services or
+networking. An API listener with no etcd listener can explain resource timeouts
+during bootstrap storage replacement. Both listeners being present still does
+not establish complete API or cluster readiness. Use the ordinary diagnostic
+mode once API resource queries recover.
+
+The default API mode validates the selected kubeconfig/API, workspace domain and single
 node's private address. It queries readiness, the authenticated node API, cluster
 operators, aggregated API registration and controller-manager installer revisions.
 Each request has a 20s timeout with a 35s command limit. It saves a protected JSON

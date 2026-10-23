@@ -108,8 +108,9 @@ Require **`RESULT: INSTALLER COMPLETED`**, then steps 06 and 11 to pass.
 `--status-only` takes one snapshot; returning to the shell is not completion.
 To resume later, return to the generated folder and run the next unfinished step.
 
-If API requests time out or operators stop progressing, run
-`./05-diagnose-control-plane.sh` (read-only). Follow the
+If API requests time out, run `./05-diagnose-control-plane.sh --node-bootstrap`
+for read-only SSH diagnostics. When the API responds, use
+`./05-diagnose-control-plane.sh` to inspect operators and revisions. Follow the
 [bootstrap diagnostic and recovery sequence](docs/operations.md#bootstrap-api-and-installer-diagnostics).
 Do not rebuild the image to retry monitoring.
 
