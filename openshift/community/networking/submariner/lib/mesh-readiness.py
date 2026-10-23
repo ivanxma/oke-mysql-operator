@@ -93,22 +93,32 @@ def junit_summary(path,started):
     return result
 
 
-def report(w):
+def report(w,timeout=120,interval=5):
+    require(0<=timeout<=600 and 1<=interval<=60,'Use cleanup wait 0..600 and interval 1..60 seconds.')
     info=selected(w);require('peer' in info,'Two enrolled clusters required for the mesh verification report.')
     record=json.loads((w.state/'verifier-run.json').read_text())
     require(record.get('clusters')=={r:dict(uid=i['uid'],id=i['id']) for r,i in info.items()},
             'Verification receipt is not bound to these cluster identities. Rerun step 08; legacy evidence is retained.')
     started=datetime.datetime.fromisoformat(record['started_at']);require(started.tzinfo is not None,'Verification start time must include timezone.')
     result=junit_summary(w.state/'verify.xml',started)
-    for role,item in info.items():
-        keys={k.split('/',1)[1]:v for k,v in record['namespaces'].items() if k.startswith(item['id']+'/')}
-        require(bool(keys),'Missing recorded test namespaces for a participating cluster.')
-        namespaces=w.read(role=='peer','get','namespaces')['items']
-        remaining=[n['metadata']['name'] for n in namespaces if n['metadata']['name'] in keys]
-        bindings=w.read(role=='peer','get','rolebindings','--all-namespaces')['items']
-        grants=[b['metadata']['name'] for b in bindings if b['metadata'].get('labels',{}).get('okd-scripts-verifier-run')==record['run_id']]
-        print(item['id']+': test namespaces remaining '+str(len(remaining))+'; temporary grants remaining '+str(len(grants)),flush=True)
-        require(not remaining and not grants,'Test cleanup incomplete. Inspect verifier-run.json; no resources were deleted by this check.')
+    deadline=time.monotonic()+timeout
+    while True:
+        require(selected(w)==info,'Cluster identity changed during cleanup verification.')
+        clean=True
+        for role,item in info.items():
+            keys={k.split('/',1)[1]:v for k,v in record['namespaces'].items() if k.startswith(item['id']+'/')}
+            require(bool(keys),'Missing recorded test namespaces for a participating cluster.')
+            namespaces=w.read(role=='peer','get','namespaces')['items']
+            remaining=[n['metadata']['name'] for n in namespaces if n['metadata']['name'] in keys]
+            bindings=w.read(role=='peer','get','rolebindings','--all-namespaces')['items']
+            grants=[b['metadata']['name'] for b in bindings if b['metadata'].get('labels',{}).get('okd-scripts-verifier-run')==record['run_id']]
+            print(item['id']+': test namespaces remaining '+str(len(remaining))+'; temporary grants remaining '+str(len(grants)),flush=True)
+            clean=clean and not remaining and not grants
+        if clean:break
+        remaining_time=deadline-time.monotonic()
+        require(remaining_time>0,'Test cleanup incomplete after wait. Inspect verifier-run.json; no resources were deleted by this check.')
+        print('WAITING: asynchronous test cleanup; retry in '+str(min(interval,int(remaining_time)))+'s. No deletions or permission changes.',flush=True)
+        time.sleep(min(interval,remaining_time))
     private_write(w.state/'verification-check.json',dict(checked_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),run_id=record['run_id'],clusters=record['clusters'],**result,cleanup_verified=True))
     print('VERIFIED: '+str(result['passed'])+' PASS, 0 FAIL, '+str(result['skipped'])+' SKIPPED; run-owned test namespaces and grants removed.',flush=True)
     print('This checks the recorded run and current cleanup; use step 06 for current gateway readiness.',flush=True)
@@ -119,6 +129,6 @@ if __name__=='__main__':
     try:
         w=Workflow()
         if sys.argv[1]=='wait':wait(w,int(sys.argv[2]),int(sys.argv[3]))
-        elif sys.argv[1]=='report':report(w)
+        elif sys.argv[1]=='report':report(w,int(sys.argv[2]) if len(sys.argv)>2 else 120,int(sys.argv[3]) if len(sys.argv)>3 else 5)
         else:raise ValueError('Unknown operation')
     except Exception as error:sys.exit('CHECK FAILED: '+str(error))

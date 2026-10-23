@@ -262,8 +262,11 @@ running; diagnose or resume the wait rather than reinstalling.
 `08-check-verification.sh` checks the latest run's JUnit report against its start
 time and recorded cluster UIDs. It distinguishes skipped specs from failures,
 requires passing tests and zero suite/test errors, and checks that run-owned test
-namespaces and temporary SCC RoleBindings are gone on both clusters. It writes
-`verification-check.json` privately and makes no cluster changes. A new test run
+namespaces and temporary SCC RoleBindings are gone on both clusters. It waits up to 120 seconds for asynchronous test namespace cleanup, printing
+remaining namespace/grant counts; use `--wait 0` for a single snapshot or
+`--wait <seconds> --interval <seconds>` for a different bounded wait. It never
+forces deletion. It writes `verification-check.json` privately and makes no
+cluster changes. A new test run
 archives the previous XML and binds its receipt to both cluster identities, so a
 previous passing report cannot satisfy a failed or incomplete rerun. Older
 receipts without this binding stay as historical evidence; rerun step 08 for new

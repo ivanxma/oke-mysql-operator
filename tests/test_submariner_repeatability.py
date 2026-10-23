@@ -2,6 +2,7 @@
 import datetime
 import importlib.util
 import os
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -49,5 +50,19 @@ class RepeatabilityTests(unittest.TestCase):
   p.check_result(good)
   for changes in [dict(ping_ok=False),dict(broker_tls_verified=False),dict(broker_http=503)]:
    with self.assertRaises(ValueError):p.check_result(dict(good,**changes))
+
+class ReportCleanupTests(unittest.TestCase):
+ def test_report_waits_for_terminating_namespace_without_deleting(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   state=Path(tmp);info={r:dict(uid=r+'-uid',id=r,gateway=r+'-worker') for r in ['target','peer']}
+   start=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=5)
+   record=dict(run_id='run',started_at=start.isoformat(),clusters={r:dict(uid=i['uid'],id=i['id']) for r,i in info.items()},namespaces={r+'/e2e-tests-one':{} for r in info})
+   (state/'verifier-run.json').write_text(json.dumps(record));(state/'verify.xml').write_text('<testsuites><testsuite><testcase/></testsuite></testsuites>')
+   w=Mock(state=state);empty={'items':[]}
+   w.read.side_effect=[{'items':[{'metadata':{'name':'e2e-tests-one'},'status':{'phase':'Terminating'}}]},empty,empty,empty,empty,empty,empty,empty]
+   with patch.object(m,'selected',return_value=info),patch.object(m.time,'sleep') as sleep:
+    m.report(w,10,1)
+   sleep.assert_called_once();w.sub.assert_not_called()
+   self.assertTrue(json.loads((state/'verification-check.json').read_text())['cleanup_verified'])
 
 if __name__=='__main__':unittest.main()
