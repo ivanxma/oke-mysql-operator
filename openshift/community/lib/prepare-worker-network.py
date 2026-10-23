@@ -1,5 +1,6 @@
 """Create a cluster-owned node NSG without editing shared OCI networking."""
 import json
+import ipaddress
 import os
 from pathlib import Path
 import secrets
@@ -55,7 +56,8 @@ def write(path, value):
 
 
 def main(args):
-    work,state,selected,cid,cname,region,domain,address,machine,action=args
+    work,state,selected,cid,cname,region,domain,address,machine,action=args[:10]
+    worker_address=args[10] if len(args)>10 else ''
     require(action in ('preview','apply'),'Invalid action')
     root=Path(work);kube=Path(selected)
     require(kube.is_absolute() and kube.is_file() and kube.samefile(root/'sno/auth/kubeconfig'),'Use this installation shared KUBECONFIG')
@@ -81,6 +83,22 @@ def main(args):
     memberships(vnic,cid,subnet.id,address,next(iter(vnic.nsg_ids or []),'preview-only'))
     vcn=network.get_vcn(subnet.vcn_id).data
     require(vcn.compartment_id==cid,'VCN is outside the selected compartment')
+    workers=[]
+    if worker_address:
+        require(worker_address!=address and ipaddress.ip_address(worker_address) in ipaddress.ip_network(machine),'Worker must have a different IP in the same machine subnet')
+        imported=json.loads((root/'worker-image/oci-worker-image.json').read_text())
+        build=json.loads((root/'worker-image/build.json').read_text())
+        require(imported['compartment_id']==cid and imported['region']==region and build['cluster_domain']==domain and build['role']=='worker','Worker image receipt scope mismatch')
+        ips=oci.pagination.list_call_get_all_results(network.list_private_ips,subnet_id=subnet.id,ip_address=worker_address).data
+        require(len(ips)==1,'Worker IP assignment is not unique')
+        worker=network.get_vnic(ips[0].vnic_id).data
+        memberships(worker,cid,subnet.id,worker_address,next(iter(worker.nsg_ids or []),'preview-only'))
+        compute=oci.core.ComputeClient(config,**options)
+        links=[a for a in oci.pagination.list_call_get_all_results(compute.list_vnic_attachments,cid).data if a.vnic_id==worker.id and a.lifecycle_state=='ATTACHED']
+        require(len(links)==1,'Worker VNIC must identify one attached instance')
+        instance=compute.get_instance(links[0].instance_id).data
+        require(instance.compartment_id==cid and instance.lifecycle_state=='RUNNING' and instance.image_id==imported['image_id'],'Worker VM compartment/image/state mismatch')
+        workers=[worker]
     name='okd-nodes-'+uid[:8]
     groups=[g for g in list_groups(network,oci.pagination.list_call_get_all_results,cid,vcn.id)
             if g.display_name==name]
@@ -88,6 +106,7 @@ def main(args):
     group=groups[0] if groups else None
     if group:owned(group,cid,vcn.id,uid)
     memberships(vnic,cid,subnet.id,address,group.id if group else 'preview-only')
+    for worker in workers:memberships(worker,cid,subnet.id,worker_address,group.id if group else 'preview-only')
     print('Plan: dedicated '+name+' NSG; stateful UDP 6081 only between its member VNICs; preserve existing memberships.',flush=True)
     if action=='preview':
         print('Read-only preview. Run with --apply to prepare the node NSG.');return
@@ -107,11 +126,21 @@ def main(args):
         network.update_vnic(vnic.id,oci.core.models.UpdateVnicDetails(nsg_ids=desired),if_match=etag)
     after=network.get_vnic(vnic.id).data
     require(group.id in memberships(after,cid,subnet.id,address,group.id) and group.id in (after.nsg_ids or []),'NSG attachment readback differs')
+    for worker in workers:
+        response=network.get_vnic(worker.id)
+        desired=memberships(response.data,cid,subnet.id,worker_address,group.id)
+        if desired!=list(response.data.nsg_ids or []):
+            etag=response.headers.get('etag');require(etag,'Worker VNIC ETag unavailable; no unguarded update')
+            network.update_vnic(worker.id,oci.core.models.UpdateVnicDetails(nsg_ids=desired),if_match=etag)
+        after=network.get_vnic(worker.id).data
+        memberships(after,cid,subnet.id,worker_address,group.id)
+        require(group.id in (after.nsg_ids or []),'Worker NSG attachment readback differs')
     actual=oci.pagination.list_call_get_all_results(network.list_network_security_group_security_rules,group.id).data
     require(all(any(matches(e,r) for e in actual) for r in rules(group.id)),'NSG rule readback differs')
     receipt=dict(compartment_id=cid,region=region,cluster_uid=uid,cluster_domain=domain,nsg_id=group.id,nsg_name=name,
                  subnet_id=subnet.id,vcn_id=vcn.id,control_plane_vnic_id=vnic.id,port=6081,protocol='UDP')
     write(Path(state)/'worker-network.json',receipt)
+    if workers:print('Verified worker VM attached to the same node NSG.',flush=True)
     print('READY: control-plane attached. Select NSG '+name+' for each new worker. Private receipt: '+str(Path(state)/'worker-network.json'))
 
 
