@@ -19,7 +19,10 @@ Helm repository; the legacy same-cluster workflow is not invoked for chart insta
 
 `03-install-storage-class.sh` is a standalone per-region step. It validates the
 explicit API/cluster UID, selected workers and private OCI compartment/region. A
-matching `mysql-oci-bv` class is reused and CSI rollouts checked. Otherwise it uses
+matching `mysql-oci-bv` class is reused and CSI rollouts checked. Before reuse
+and before submitting any database PVC, the CSI Secret must select instance
+principals and the exact configured compartment/region; a matching class name
+alone is insufficient. Otherwise it uses
 the existing tested OCI adapter with instance principals, scoped node inventory,
 pinned/checksummed OCI manifests and worker-only consistent-device-path
 MachineConfig. It preserves shared routing/security lists and the cluster default
@@ -73,3 +76,23 @@ Sources: [operator properties](https://dev.mysql.com/doc/mysql-operator/en/mysql
 [official operator source](https://github.com/mysql/mysql-operator),
 [official chart index](https://mysql.github.io/mysql-operator/index.yaml),
 [OCI OpenShift storage](https://github.com/oracle-quickstart/oci-openshift/blob/main/docs/STORAGE.md).
+
+## Restart recovery and discovery prerequisites
+
+A successful gateway connection does not prove Lighthouse can reach the broker.
+Check ServiceExport `Ready=True`, remote ServiceImports and EndpointSlice hostname
+records. Both database namespace names must exist in both clusters because imports
+preserve the source namespace; step 05 now prepares the peer discovery namespace.
+No remote database or SCC grant is created in that empty namespace.
+
+Run step 11 after the primary is ONLINE and before submitting the replica. It
+checks the primary pod-qualified `clusterset.local` name and TCP 3306 from both
+regional operator pods without database credentials or SQL writes.
+
+The one-member lab may remain OFFLINE after all VMs stop. Step 12 is a recovery
+preview by default. It requires the selected PRIMARY role, exactly one configured
+member and exactly one observed OFFLINE member, then runs MySQL Shell's native
+complete-outage dry run. `--apply` runs native recovery without `force`. It does
+not delete PVCs, reset metadata, change credentials or perform a replica promotion.
+Repeat step 07 and ClusterSet/replication checks after recovery. Multi-member and
+replica recovery are intentionally refused by this lab helper.

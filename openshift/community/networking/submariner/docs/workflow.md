@@ -279,3 +279,18 @@ and the explicit network-review acknowledgement. Discovery and probes replace
 manual copying of addresses and IDs; they do not silently change IAM or shared
 networking. The automated recipe is for the supported two-region lab; gateway HA
 and disruptive failover tests need a separate maintenance plan.
+
+## Broker client reload after restart
+
+If gateways are connected but ServiceExports report broker TLS errors, compare
+that with the broker CA and token currently stored in each selected spoke's
+`submariner-broker-secret`. Run `06-restart-service-discovery.sh` for a preview.
+The script verifies saved cluster identities and performs a certificate-verified,
+authenticated broker ServiceImport read using those existing credentials.
+
+With `--apply`, it recycles only the UID-bound Lighthouse agent pod at each site
+and waits for a new Ready pod. The Submariner operator reconciles its Deployment,
+so a Deployment restart annotation alone is insufficient evidence of a restart.
+The helper changes no CA/token, tunnel, CNI, OCI resources or private DNS records.
+Then verify ServiceExport readiness and remote workload DNS. A successful reload
+is not proof that imports exist: destination namespaces must also exist.

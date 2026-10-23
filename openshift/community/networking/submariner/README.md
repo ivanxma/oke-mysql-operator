@@ -68,3 +68,7 @@ For a fresh peer installation, use this order after peer discovery:
 Path probes and readiness/report checks change no cluster/OCI resources; they
 save private evidence. Step 08 verification creates temporary test resources.
 For an existing joined pair, resume at the readiness check; do not rerun join.
+
+For broker TLS errors after a restart, preview `06-restart-service-discovery.sh`,
+then use `--apply` only after the existing credentials pass verification. Recheck
+ServiceExports and remote DNS afterward. See [recovery details](docs/workflow.md).

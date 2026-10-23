@@ -83,12 +83,18 @@ def peer_get(values,kind,name,namespace=None):
 
 def export_service():
  ns=os.environ['MYSQL_NAMESPACE'];name=os.environ['MYSQL_CLUSTER_NAME']+'-instances'
+ peer=peer_env();peer_get(peer,'namespace','kube-system')
+ require(peer['MYSQL_NAMESPACE']!=ns,'Regional database namespaces must be distinct.')
+ # Lighthouse imports are namespace preserving. Both namespace names must exist
+ # at both sites, even though each operator watches only its local database.
+ rt.managed('namespace',peer['MYSQL_NAMESPACE'])
+ own_apply(dict(apiVersion='v1',kind='Namespace',metadata=rt.metadata(peer['MYSQL_NAMESPACE'])))
  own_apply(dict(apiVersion='multicluster.x-k8s.io/v1alpha1',kind='ServiceExport',metadata=rt.metadata(name,ns)))
- print('Exported cluster headless service for stable Submariner pod/metadata addresses.',flush=True)
+ print('Prepared peer discovery namespace and exported local headless service for Submariner pod addresses.',flush=True)
 
 def create_cluster():
  ns=os.environ['MYSQL_NAMESPACE'];name=os.environ['MYSQL_CLUSTER_NAME'];doc=manifest();data=credentials()
- rt.workers(get('nodes'));get('storageclass',os.environ['STORAGE_CLASS'])
+ rt.workers(get('nodes'));check_storage_scope(get('storageclass',os.environ['STORAGE_CLASS']),get('secret','oci-volume-provisioner','oci-csi'))
  if os.environ['MYSQL_SITE_ROLE']=='REPLICA':
   peer=peer_env();require(peer['MYSQL_SITE_ROLE']=='PRIMARY' and peer['MYSQL_VERSION']==os.environ['MYSQL_VERSION'],'Replica requires the selected same-version London primary.')
   primary=peer_get(peer,'innodbcluster',peer['MYSQL_CLUSTER_NAME'],peer['MYSQL_NAMESPACE'])
@@ -164,15 +170,22 @@ def replication_test():
  state_file('replication-test.json',dict(id=token,verified_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),replica='cluster2'))
  print('PASS: London write observed on Frankfurt replica; test row retained.',flush=True)
 
+def check_storage_scope(storage_class,secret):
+ require(storage_class['provisioner']=='blockvolume.csi.oraclecloud.com' and storage_class.get('reclaimPolicy')=='Retain' and storage_class.get('volumeBindingMode')=='WaitForFirstConsumer' and storage_class.get('parameters',{}).get('attachment-type')=='paravirtualized','Selected StorageClass differs from the scoped OCI profile.')
+ config=json.loads(base64.b64decode(secret['data']['config.yaml'],validate=True))
+ require(config.get('useInstancePrincipals') is True and config.get('compartment')==os.environ['MYSQL_OCI_COMPARTMENT_ID'] and config.get('region')==os.environ['MYSQL_OCI_REGION'],'Existing CSI config does not use instance principals in the selected compartment/region; no PVC may be created.')
+
 def prepare_storage():
  guard();rt.workers(get('nodes'))
  existing=get('storageclass',os.environ['STORAGE_CLASS'],optional=True)
  if existing:
   require(existing['provisioner']=='blockvolume.csi.oraclecloud.com' and existing['reclaimPolicy']=='Retain' and existing.get('volumeBindingMode')=='WaitForFirstConsumer' and existing.get('parameters',{}).get('attachment-type')=='paravirtualized','Existing selected class differs; no adoption.')
+  check_storage_scope(existing,get('secret','oci-volume-provisioner','oci-csi'))
   print('Selected OCI storage class exists; verifying CSI rollout, no reinstallation.',flush=True)
   for resource in ['deployment/csi-oci-controller','daemonset/csi-oci-node']:
    oc('--request-timeout=0','-n','oci-csi','rollout','status',resource,'--timeout=600s',timeout=630)
   return
+ require(os.environ['STORAGE_CLASS']=='mysql-oci-bv','Requested class is missing; this step creates mysql-oci-bv only.')
  import oci_storage
  oci_storage.main()
 
@@ -199,6 +212,38 @@ def audit_storage():
  state_file('volume-audit.json',result)
  print('VERIFIED: '+str(len(result))+' database volume(s) in selected compartment/region, attached to selected workers.',flush=True)
 
+def verify_discovery():
+ peer=peer_env();peer_get(peer,'namespace','kube-system')
+ local={k:os.environ[k] for k in ('KUBECONFIG','KUBE_CONTEXT','MYSQL_NAMESPACE','MYSQL_CLUSTER_NAME','MYSQL_SUBMARINER_ID')}
+ primary=local if os.environ['MYSQL_SITE_ROLE']=='PRIMARY' else peer
+ endpoint=primary['MYSQL_CLUSTER_NAME']+'-0.'+primary['MYSQL_SUBMARINER_ID']+'.'+primary['MYSQL_CLUSTER_NAME']+'-instances.'+primary['MYSQL_NAMESPACE']+'.svc.clusterset.local'
+ code='import socket,json; host='+repr(endpoint)+'; addresses=sorted({a[4][0] for a in socket.getaddrinfo(host,3306,type=socket.SOCK_STREAM)}); s=socket.create_connection((host,3306),timeout=10); s.settimeout(10); banner=s.recv(128); s.close(); assert len(banner)>4 and banner[4]==10, "No MySQL protocol greeting"; print("DISCOVERY_JSON="+json.dumps({"host":host,"addresses":addresses,"tcp3306":True}))'
+ for site in (local,peer):
+  args=['oc','--kubeconfig',site['KUBECONFIG'],'--context',site['KUBE_CONTEXT'],'--request-timeout=30s','-n',os.environ['OPERATOR_NAMESPACE'],'exec','deployment/mysql-operator','--','mysqlsh','--py','--quiet-start=2','-e',code]
+  result=subprocess.run(args,capture_output=True,text=True,timeout=45)
+  require(result.returncode==0 and 'DISCOVERY_JSON=' in result.stdout,'DNS/TCP prerequisite failed from '+site['MYSQL_SUBMARINER_ID']+'. Check peer namespace, ServiceExport Ready, Lighthouse broker TLS and EndpointSlice hostname; no database changes made.')
+  value=json.loads(result.stdout.split('DISCOVERY_JSON=',1)[1].strip())
+  print('PASS '+site['MYSQL_SUBMARINER_ID']+': '+value['host']+' -> '+', '.join(value['addresses'])+'; TCP 3306 reachable.',flush=True)
+ print('Discovery prerequisite passed from both operator pods. This does not prove ClusterSet health or replication.',flush=True)
+
+def recover_primary(apply=False):
+ require(os.environ['MYSQL_SITE_ROLE']=='PRIMARY' and os.environ['MYSQL_INSTANCES']=='1','Recovery is limited to the selected one-member lab primary; multi-member/replica recovery needs separate review.')
+ cr=get('innodbcluster',os.environ['MYSQL_CLUSTER_NAME'],os.environ['MYSQL_NAMESPACE'])
+ require(cr['spec']['instances']==1,'Only the one-member lab may use this recovery.')
+ state=sql('import json; s=shell.get_session(); print("MYSQL_JSON="+json.dumps([list(r) for r in s.run_sql("SELECT MEMBER_STATE FROM performance_schema.replication_group_members").fetch_all()]))')
+ if state==[['ONLINE']]:
+  print('ALREADY ONLINE: no recovery applied. Run step 07 for operator/Router readiness.',flush=True);return
+ require(state==[['OFFLINE']],'Expected exactly one OFFLINE group member; refusing recovery in an ambiguous state.')
+ name=json.dumps(os.environ['MYSQL_CLUSTER_NAME'])
+ # Native dryRun validates metadata, reachability and transaction safety. No force,
+ # primary switch, metadata removal or datadir/PVC deletion is permitted.
+ code='import json; dba.reboot_cluster_from_complete_outage('+name+', {"dryRun": True}); print("MYSQL_JSON="+json.dumps({"dryRun":True}))'
+ sql(code);print('PASS: native complete-outage recovery dry run for the one-member lab primary.',flush=True)
+ if not apply:
+  print('PREVIEW ONLY. Use --apply to start the existing group without force; data and credentials are retained.',flush=True);return
+ sql('import json; c=dba.reboot_cluster_from_complete_outage('+name+'); print("MYSQL_JSON="+json.dumps({"cluster":c.name}))')
+ print('Recovery submitted. Run 07-wait-cluster.sh, then verify ClusterSet and replication. Recovery is not proof of a healthy replica.',flush=True)
+
 def main(action):
  guard()
  if action=='label':
@@ -212,6 +257,8 @@ def main(action):
  elif action=='verify':verify()
  elif action=='replication-test':replication_test()
  elif action=='audit':audit_storage()
+ elif action=='discovery-check':verify_discovery()
+ elif action in ('recovery-preview','recovery-apply'):recover_primary(action=='recovery-apply')
  elif action=='validate':rt.capacity(get('nodes'),oc('get','pods','-A','-o','json',json_output=True))
  else:raise ValueError('Unknown operation.')
 

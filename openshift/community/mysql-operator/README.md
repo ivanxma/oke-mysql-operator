@@ -41,6 +41,7 @@ Create London first, then Frankfurt:
 ./06-create-cluster.sh
 ./07-wait-cluster.sh
 # From Frankfurt's generated MySQL folder:
+./11-verify-service-discovery.sh
 ./06-create-cluster.sh
 ./07-wait-cluster.sh
 # Back in London's generated MySQL folder:
@@ -56,3 +57,14 @@ regional generated folder. No implicit `~/.kube/config` is used.
 
 See [technical details](docs/deployment.md) for cross-cluster addressing, security,
 storage, expected results and recovery boundaries.
+
+After a complete VM shutdown, wait for OKD, CSI and the Submariner mesh first.
+If the one-member London primary remains OFFLINE, run `12-recover-primary.sh`
+for a native recovery dry run, review it, then run it with `--apply` and repeat
+step 07. This recovery never forces a primary or deletes data. Step 11 checks
+London's exported pod DNS and TCP 3306 from both operator pods without SQL writes.
+
+Lighthouse needs each database namespace name to exist at both sites. Step 05
+prepares those empty discovery namespaces; each operator still watches only its
+local database namespace. Broker TLS failures are separate from tunnel status;
+see the [network recovery notes](../networking/submariner/docs/workflow.md).
