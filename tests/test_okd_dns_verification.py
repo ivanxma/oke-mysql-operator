@@ -1,5 +1,8 @@
 """DNS acceptance parsing and polling without SSH, DNS or OCI access."""
 import importlib.util
+import contextlib
+import io
+import json
 from pathlib import Path
 import subprocess
 import unittest
@@ -52,6 +55,28 @@ class RunnerTests(unittest.TestCase):
     def test_single_failure_returns_failure(self):
         self.assertEqual(self.run_check(lambda c,d,e,r:self.report(r,r=='ADMIN')),1)
 
+    def test_unreachable_host_keeps_four_checks_unknown(self):
+        def report(c,d,e,r):
+            return self.report(r) if r == 'ADMIN' else dict(role=r,checks=[],error='SSH authentication denied (exit 255)')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.run_check(report),1)
+        self.assertIn('4 PASS, 0 FAIL, 4 NOT CHECKED (8 expected); 1 probe error(s)',output.getvalue())
+        self.assertIn('SSH authentication denied',output.getvalue())
+        self.assertNotIn('READY for full',output.getvalue())
+
+    def test_unreachable_host_does_not_hide_remaining_dns_failures(self):
+        def report(c,d,e,r):
+            if r == 'TARGET':
+                return dict(role=r,checks=[],error='Remote probe exceeded 65s')
+            result = self.report(r,False)
+            result['checks'][-1]['passed'] = True
+            return result
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.run_check(report),1)
+        self.assertIn('1 PASS, 3 FAIL, 4 NOT CHECKED (8 expected)',output.getvalue())
+
     def test_stale_target_refused(self):
         with patch.object(verify.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'hostname 192.0.2.99\n','')), patch.object(verify,'remote_probe') as probe, self.assertRaises(ValueError):
             verify.run('config','cluster.invalid','192.0.2.20','0','1')
@@ -70,5 +95,42 @@ class RunnerTests(unittest.TestCase):
         with patch.object(verify.time,'monotonic',side_effect=[100,100]), patch.object(verify.time,'sleep') as sleep:
             self.assertEqual(self.run_check(report,wait='5'),0)
             sleep.assert_called_once_with(1)
+
+class RemoteProbeTests(unittest.TestCase):
+    def remote(self, result):
+        with patch.object(verify.subprocess,'run',return_value=result):
+            return verify.remote_probe('config','cluster.invalid','192.0.2.20','TARGET')
+
+    def test_authentication_failure_explained_without_disclosing_stderr(self):
+        result = self.remote(subprocess.CompletedProcess([],255,'','Permission denied (publickey). /private/key-path'))
+        self.assertEqual(result['checks'],[])
+        self.assertIn('SSH authentication denied (exit 255)',result['error'])
+        self.assertNotIn('/private/key-path',result['error'])
+
+    def test_timeout_is_not_a_dns_failure(self):
+        with patch.object(verify.subprocess,'run',side_effect=subprocess.TimeoutExpired('ssh',65)):
+            result = verify.remote_probe('config','cluster.invalid','192.0.2.20','TARGET')
+        self.assertEqual(result['checks'],[])
+        self.assertIn('exceeded 65s',result['error'])
+
+    def test_invalid_json_is_probe_error(self):
+        result = self.remote(subprocess.CompletedProcess([],0,'not json',''))
+        self.assertIn('invalid JSON',result['error'])
+
+    def test_invalid_check_types_are_rejected(self):
+        report = dict(role='TARGET', checks=[dict(name='x',passed='false',detail='x')]*4)
+        result = self.remote(subprocess.CompletedProcess([],0,json.dumps(report),''))
+        self.assertIn('malformed',result['error'])
+
+    def test_other_cluster_response_is_rejected(self):
+        report = dict(role='TARGET', checks=[dict(name='other.invalid',passed=True,detail='x')]*4)
+        result = self.remote(subprocess.CompletedProcess([],0,json.dumps(report),''))
+        self.assertIn('selected cluster',result['error'])
+
+    def test_valid_complete_report_is_accepted(self):
+        names = ['api.cluster.invalid','api-int.cluster.invalid',
+                 'console-openshift-console.apps.cluster.invalid','probe-123.apps.cluster.invalid']
+        report = dict(role='TARGET',checks=[dict(name=n,passed=True,detail='192.0.2.20') for n in names])
+        self.assertEqual(self.remote(subprocess.CompletedProcess([],0,json.dumps(report),'')),report)
 
 if __name__ == '__main__': unittest.main()

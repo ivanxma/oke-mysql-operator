@@ -117,6 +117,35 @@ The required records are `api.<cluster>.<domain>`, `api-int.<cluster>.<domain>` 
 single-node direct-ingress lab. Both admin and node must resolve them. Do not
 substitute a jump-host-only hosts entry for node DNS.
 
+### Read-only DNS verification
+
+From the generated execution folder:
+
+```bash
+./05-verify-dns.sh --wait 600 --interval 15
+```
+
+This checks four names on each host: API, internal API, console and a fresh apps
+wildcard name. Completion requires **8 PASS**. It changes no DNS records or host
+configuration. `FAIL` means a completed lookup did not match; `NOT CHECKED` means
+the host probe failed, so those DNS results remain unknown. A failed target SSH
+probe does not establish a target DNS failure. Its error category distinguishes
+authentication, host identity, connection, remote Python and probe timeout errors.
+
+If exact names return NXDOMAIN while a fresh apps wildcard succeeds, negative
+caching is a possible cause. The printed negative-answer TTL is in seconds;
+a ten-minute poll may end before a longer cached answer expires. Polling does
+not clear caches or repair DNS. Check the record preview and resolver visibility
+before deciding to wait. When ADMIN passes but TARGET is not checked, investigate
+the target SSH/probe error rather than rewriting working DNS records. Never
+disable SSH host-key checking to bypass an identity error.
+
+Previous installations can share a view with distinct cluster zones. Reusing
+the same cluster domain and applying step 05 replaces the three selected A record
+sets with the current node IP; other records remain. An explicit console record
+can override the apps wildcard. Preview step 05 before applying changes to a
+domain that may still serve another cluster.
+
 Preserve `sno/`, authentication and receipts. Re-running monitoring, DNS repair or
 validation does not require rebuilding installer credentials. A build refuses
 existing installation state; use a separate workspace for a new cluster.

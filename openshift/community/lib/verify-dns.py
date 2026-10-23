@@ -65,19 +65,49 @@ def probe(domain, expected, role):
 
 
 def remote_probe(config, domain, expected, role):
+    error = None
     try:
         command = shlex.join(['python3','-','probe',domain,expected,role])
         result = subprocess.run(['ssh','-F',config,'okd-'+('admin' if role=='ADMIN' else 'target'),command],
                                 input=Path(__file__).read_text(), capture_output=True, text=True, timeout=65)
         if result.returncode:
-            raise ValueError('SSH or remote DNS probe failed')
+            # Classify errors without printing remote output or private key paths.
+            stderr = result.stderr.lower()
+            reason = next((label for text, label in (
+                ('permission denied', 'SSH authentication denied'),
+                ('host key verification failed', 'SSH host identity verification failed'),
+                ('remote host identification has changed', 'SSH host identity changed'),
+                ('connection refused', 'SSH connection refused'),
+                ('connection timed out', 'SSH connection timed out'),
+                ('no route to host', 'No route to the SSH host'),
+                ('connection reset', 'SSH connection reset'),
+                ('connection closed', 'SSH connection closed'),
+                ('python3: command not found', 'Remote Python 3 is missing'),
+                ('python3: not found', 'Remote Python 3 is missing'),
+            ) if text in stderr), 'SSH or remote Python probe failed')
+            raise ValueError('%s (exit %s)' % (reason, result.returncode))
         report = json.loads(result.stdout)
-        if report.get('role') != role or len(report.get('checks',[])) != 4:
+        if not isinstance(report, dict) or report.get('role') != role:
             raise ValueError('Unexpected probe response')
+        checks = report.get('checks')
+        names = ['api.'+domain, 'api-int.'+domain, 'console-openshift-console.apps.'+domain]
+        if (not isinstance(checks, list) or len(checks) != 4 or
+                any(not isinstance(c, dict) or type(c.get('passed')) is not bool or
+                    not isinstance(c.get('name'), str) or not isinstance(c.get('detail'), str)
+                    for c in checks)):
+            raise ValueError('Incomplete or malformed remote DNS response')
+        if ([c['name'] for c in checks[:3]] != names or
+                not re.fullmatch(r'probe-[0-9]+\.apps\.'+re.escape(domain), checks[3]['name'])):
+            raise ValueError('Remote DNS response does not match selected cluster')
         return report
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return dict(role=role, checks=[dict(name='SSH / remote DNS check',passed=False,
-                    detail='Verify configured SSH state, host identity, Python and access route')])
+    except subprocess.TimeoutExpired:
+        error = 'Remote probe exceeded 65s; SSH or DNS queries did not finish'
+    except OSError:
+        error = 'Cannot start SSH or read the probe script locally'
+    except ValueError as failure:
+        error = ('Remote probe returned invalid JSON' if isinstance(failure, json.JSONDecodeError)
+                 else str(failure))
+    return dict(role=role, checks=[], error=error)
 
 
 def run(config, domain, expected, wait_seconds, interval):
@@ -95,21 +125,29 @@ def run(config, domain, expected, wait_seconds, interval):
     while True:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             reports = list(executor.map(lambda role: remote_probe(config,domain,expected,role), ('ADMIN','TARGET')))
-        passed = failed = 0
+        passed = failed = unchecked = probe_errors = 0
         for report in reports:
             print('\n'+report['role'])
+            if report.get('error'):
+                unchecked += 4
+                probe_errors += 1
+                print('[ERROR] '+report['error'])
+                print('[NOT CHECKED] All 4 DNS checks on this host; DNS status is unknown.')
+                continue
             for check in report['checks']:
                 ok = check['passed']
                 passed += int(ok); failed += int(not ok)
                 name = 'fresh apps wildcard' if check['name'].startswith('probe-') else check['name']
                 print('[%s] %s → %s' % ('PASS' if ok else 'FAIL',name,check['detail']))
-        print('\nDNS: %s PASS, %s FAIL.' % (passed,failed), flush=True)
-        if not failed:
+        print('\nDNS: %s PASS, %s FAIL, %s NOT CHECKED (8 expected); %s probe error(s).' %
+              (passed,failed,unchecked,probe_errors), flush=True)
+        if passed == 8 and not failed and not unchecked and not probe_errors:
             print('READY for full environment validation. DNS success alone does not prove cluster readiness.')
             return 0
         remaining = deadline-time.monotonic()
         if wait_seconds == 0 or remaining <= 0:
-            print('NOT READY. Fix reported failures or retry with --wait for propagation; no changes were made.')
+            print('NOT READY. Resolve probe errors separately from DNS failures; no changes were made.')
+            print('For NXDOMAIN, compare its remaining negative-answer TTL with --wait. Polling does not clear resolver caches.')
             return 1
         pause = min(interval,remaining)
         print('Waiting %.0fs before another read-only check; %.0fs polling time remains.' % (pause,remaining), flush=True)
