@@ -143,4 +143,11 @@ class RemoteProbeTests(unittest.TestCase):
         report = dict(role='TARGET',checks=[dict(name=n,passed=True,detail='192.0.2.20') for n in names])
         self.assertEqual(self.remote(subprocess.CompletedProcess([],0,json.dumps(report),'')),report)
 
+    def test_unpublished_wildcard_does_not_poison_fixed_api_names(self):
+        with patch.object(verify,'query',return_value={'name':'fresh','passed':False,'detail':'NXDOMAIN'}) as query:
+            result=verify.probe('cluster.invalid','192.0.2.20','TARGET')
+        self.assertEqual(query.call_count,1)
+        self.assertTrue(query.call_args.args[0].startswith('probe-'))
+        self.assertTrue(all(c.get('checked') is False for c in result['checks'][:3]))
+
 if __name__ == '__main__': unittest.main()

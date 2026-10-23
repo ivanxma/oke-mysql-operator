@@ -28,3 +28,27 @@ in Git-ignored `generated/openshift/`; private keys remain in their protected ke
 
 Sample files: [mandatory environment](../community.env.example)
 and [optional overrides](../community.optional.env.example).
+
+## Prepare another region from the same jump host
+
+The jump host's region and `OCI_REGION` for the deployment may differ. Generate
+a separate profile with `00-create-workspace.sh --region eu-frankfurt-1`; select
+the authorized target subnet/compartment and run steps 01–04 inside that generated
+folder. Each region has its own bucket, media, kubeconfig and custom image. VM
+creation remains manual; register its actual IP afterward with step 05.
+
+For two generated deployments with the same folder name, private DNS zones can
+be published in both existing VCN views after both actual node IPs are registered:
+
+```bash
+./05-sync-regional-dns.sh --peer-region uk-london-1          # Preview from Frankfurt
+./05-sync-regional-dns.sh --peer-region uk-london-1 --apply  # Cluster DNS changes
+./05-verify-dns.sh --wait 3600
+```
+
+The sync verifies both VMs/images, compartments, subnets and views. It changes only
+the selected clusters' three A sets in private zones, preserving other records.
+It does not change shared resolvers, DNS forwarding or routes. DRG peering alone
+does not share private DNS views. Resolver caches still need time to refresh.
+DNS verification probes a fresh wildcard before fixed API names, avoiding new
+fixed-name negative cache entries while a private zone is still being published.

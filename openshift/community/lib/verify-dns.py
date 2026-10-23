@@ -61,7 +61,14 @@ def probe(domain, expected, role):
     names = ['api.'+domain, 'api-int.'+domain, 'console-openshift-console.apps.'+domain]
     # Checking the console alone cannot detect an accidentally narrow apps record.
     names.append('probe-%s.apps.%s' % (time.time_ns(), domain))
-    return dict(role=role, checks=[query(name, expected) for name in names])
+    # Wait for private-zone publication using a new wildcard name before touching
+    # fixed API names. Premature fixed-name queries can cache NXDOMAIN for an hour.
+    fresh=query(names[-1],expected)
+    if not fresh['passed']:
+        checks=[dict(name=name,passed=False,checked=False,detail='Not queried: waiting for fresh apps wildcard/zone publication') for name in names[:-1]]
+    else:
+        checks=[query(name,expected) for name in names[:-1]]
+    return dict(role=role, checks=checks+[fresh])
 
 
 def remote_probe(config, domain, expected, role):
@@ -93,6 +100,7 @@ def remote_probe(config, domain, expected, role):
         names = ['api.'+domain, 'api-int.'+domain, 'console-openshift-console.apps.'+domain]
         if (not isinstance(checks, list) or len(checks) != 4 or
                 any(not isinstance(c, dict) or type(c.get('passed')) is not bool or
+                    ('checked' in c and type(c['checked']) is not bool) or
                     not isinstance(c.get('name'), str) or not isinstance(c.get('detail'), str)
                     for c in checks)):
             raise ValueError('Incomplete or malformed remote DNS response')
@@ -135,6 +143,10 @@ def run(config, domain, expected, wait_seconds, interval):
                 print('[NOT CHECKED] All 4 DNS checks on this host; DNS status is unknown.')
                 continue
             for check in report['checks']:
+                if check.get('checked') is False:
+                    unchecked+=1
+                    print('[NOT CHECKED] '+check['name']+' → '+check['detail'])
+                    continue
                 ok = check['passed']
                 passed += int(ok); failed += int(not ok)
                 name = 'fresh apps wildcard' if check['name'].startswith('probe-') else check['name']
