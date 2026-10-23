@@ -1,8 +1,9 @@
 # Installation prerequisites and implementation
 
-Follow the [short installation sequence](../README.md). Commands there run in
-Bash from `openshift/community/`. Regional wrappers run the same scripts from
-the repository root. Use either form consistently with the selected environment.
+Follow the [short installation sequence](../README.md). Start in Bash from the cloned repository root and run `00-create-workspace.sh`.
+Then run all numbered commands from its generated private execution folder. Each
+launcher selects the same configuration automatically. Advanced regional source
+wrappers remain available under `openshift/community/regions/`.
 
 ## Hosts and VM sizing
 

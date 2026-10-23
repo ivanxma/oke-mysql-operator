@@ -1,70 +1,80 @@
 # Community OKD on OCI Compute
 
-Install one SCOS control-plane VM, with optional workers. Use **Oracle Linux 9
-for the admin/jump host**; cluster nodes run **SCOS**, not OL9. This community
-workflow uses a public OKD release and requires no Red Hat account.
+Start on the **Oracle Linux 9 jump host**. Install one private SCOS control-plane
+VM, with optional SCOS workers. This community workflow needs no Red Hat account.
 
-Run the steps below in **Bash from `openshift/community/`**. Stop on a failed step.
-A new cluster needs a separate workspace. Keep real configuration and credentials
-in Git-ignored `internal_doc/`.
+## Prerequisites
 
-## 1. Configure
+- An OL9 jump host with sudo, Internet access and an existing protected SSH key
+  that can authenticate back to this host. Step 01 installs the remaining tools.
+- An authorized instance principal, compartment, private node subnet and DNS
+  domain. See [network/IAM prerequisites](docs/installation.md).
 
-Choose `uk-london-1` or `eu-frankfurt-1`:
+## 00. Clone and generate the working folder
+
+Run in Bash as your normal user:
 
 ```bash
-region=uk-london-1
-./regions/$region/00-init-config.sh
-${EDITOR:-vi} ../../internal_doc/regions/$region/community.env
-source ./regions/$region/env.sh ""
-./regions/$region/00-check-config.sh --preparation
+sudo dnf install -y git python3 openssh-clients
+git clone https://github.com/ivanxma/oke-mysql-operator.git okd-install
+cd okd-install
+./openshift/community/00-create-workspace.sh --region uk-london-1
+cd internal_doc/regions/uk-london-1/jumphost
 ```
 
-Use [mandatory settings](community.env.example) and, if needed,
-[optional settings](community.optional.env.example). Fill the mandatory private
-profile before sourcing it. **No target VM or node IP is needed yet.**
+For an existing clone, run `git pull --ff-only`, then the generator command
+above; keep the same private folder and resume the next unfinished step.
 
-## 2. Prepare and import the installation image
+The generator creates the private configuration and numbered launch scripts.
+It reuses an existing profile, or asks for missing settings. Region and compartment
+ID are discovered from OCI metadata when available; cluster name and overlay
+CIDRs have planning defaults. Review those ranges against connected networks.
+For EU, select `eu-frankfurt-1` and enter the corresponding generated folder.
+
+**Run all remaining commands from this generated folder, one at a time.** Each
+launcher selects its configuration automatically. No manual configuration-file
+creation or transfer is required. No target VM/IP is needed during preparation.
+
+## 01–04. Prepare and import the image
 
 ```bash
+./00-check-config.sh --preparation
 ./01-prepare-host.sh
 ./02-create-bucket.sh
-source ./regions/$region/env.sh ""
 ./02-download-okd.sh
 ./02-download-scos-image.sh
 ./03-build-control-plane-image.sh
 ./04-upload-image.sh
 ```
 
-Wait for the custom image to be `AVAILABLE`.
+Stop on failure. Wait for the custom image to be **`AVAILABLE`**.
 
-## 3. Create the VM in OCI
+## Create the new VM in OCI
 
-Manually create a **new private VM** from that imported image in the selected
-region and compartment. Use a compatible x86 shape, UEFI and a suitable boot
-volume. See [VM and network prerequisites](docs/installation.md). Record the
-actual assigned private IP. Booting the image installs SCOS on its target disk.
+Manually launch a **new private VM** from that image in the selected region and
+compartment. Lab baseline: compatible x86 shape, **4 OCPU / 48 GB RAM / 150 GB
+boot**, UEFI, Secure Boot disabled, no public IP. Booting installs SCOS on the
+new VM's configured installation disk. Record the actual assigned private IP.
 
-## 4. Register the VM and configure DNS
+## 05. Register, configure DNS and validate
 
 ```bash
-read -r -p "Actual VM private IP: " node_ip
+read -r -p "Actual new VM private IP: " node_ip
 ./05-register-node-ip.sh "$node_ip" --assigned-to-target
 unset node_ip
-source ./regions/$region/env.sh ""
 ./01-prepare-host.sh --ssh-only
 ./05-discover-dns-view.sh
-./05-configure-dns.sh                 # Read-only preview
-./05-configure-dns.sh --apply         # Creates/updates OCI DNS
-./05-verify-dns.sh --wait 600          # Read-only DNS polling on both hosts
+./05-configure-dns.sh                  # Read-only preview
+./05-configure-dns.sh --apply          # Changes OCI DNS
+./05-verify-dns.sh --wait 600           # Read-only polling on both hosts
 ./00-validate-environment.sh --existing-target
 ```
 
-Discovery saves the view automatically. No OCID copying is required. DNS must
-work during bootstrap; allow publication/cache refresh before validation.
-Resolve failures and review warnings before continuing.
+DNS discovery is saved automatically. Require **8 PASS, 0 FAIL** for DNS, then
+resolve environment failures and review warnings. Publication/cache refresh can
+take time. DNS must work during bootstrap; preserve installation state on retries.
 
-## 5. Wait and accept the cluster
+## 05–11. Complete and accept
 
 ```bash
 ./05-wait-for-control-plane.sh
@@ -72,14 +82,16 @@ Resolve failures and review warnings before continuing.
 ./11-verify-web-access.sh
 ```
 
-Wait for **`RESULT: INSTALLER COMPLETED`**, then require steps 06 and 11 to pass.
-`--status-only` takes one snapshot; returning to the shell does **not** mean the
-installation completed. See [status and troubleshooting](docs/operations.md).
+Require **`RESULT: INSTALLER COMPLETED`**, then steps 06 and 11 to pass.
+`--status-only` takes one snapshot; returning to the shell is not completion.
+To resume later, return to the generated folder and run the next unfinished step.
 
-## Next steps
+## Details and optional work
 
-- [CLI, browser, demo, workers and ISO cleanup](docs/operations.md)
-- [Configuration and private state](docs/configuration.md)
-- [Network diagram and service placement](docs/architecture.md)
-- [Independent clusters with Submariner](networking/submariner/README.md)
-- [MySQL Operator on OKD](../mysql-operator/README.md)
+- [Generated folder and configuration options](docs/configuration.md)
+- [Status, CLI/browser, workers, demo and ISO cleanup](docs/operations.md)
+- [Network diagram](docs/architecture.md)
+- [Submariner](networking/submariner/README.md) · [MySQL Operator](../mysql-operator/README.md)
+- [Sample mandatory env](community.env.example) · [Optional settings](community.optional.env.example)
+
+Generated configuration, state and credentials stay in Git-ignored `internal_doc/`.

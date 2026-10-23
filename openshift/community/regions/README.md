@@ -7,7 +7,12 @@ Follow the [short OKD installation guide](../README.md).
 Technical prerequisites, configuration and troubleshooting are in
 [the installation docs](../docs/installation.md).
 
-From the repository root, prepare one private profile:
+The normal jump-host workflow generates a private execution folder with
+`../00-create-workspace.sh`; follow the installation guide above and run numbered
+commands inside that generated folder.
+
+For advanced use of source-level regional wrappers, prepare a private profile
+from the repository root:
 
 ```bash
 ./openshift/community/regions/uk-london-1/00-init-config.sh

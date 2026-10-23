@@ -4,10 +4,64 @@ The sourceable examples are [community.env.example](../community.env.example)
 and [community.optional.env.example](../community.optional.env.example). They
 contain placeholders and generic defaults, not deployment inventory.
 
-`openshift/community/regions/<region>/00-init-config.sh` (from the repo root) creates a mode-600 mandatory profile and an
-optional companion under `internal_doc/regions/<region>/`. Existing files are
-retained. Fill the mandatory profile; uncomment optional overrides only when
-needed. The optional file loads first; explicit primary settings take precedence.
+The step-00 generator creates a mode-600 mandatory profile and optional companion
+under `internal_doc/regions/<region>/<deployment>/`. Existing files are retained.
+The optional file loads first; explicit primary settings take precedence. The
+low-level regional `00-init-config.sh` remains available for advanced orchestration.
+
+## Generated execution folder (recommended)
+
+On the OL9 jump host, after git clone, run from the repository root:
+
+```bash
+./openshift/community/00-create-workspace.sh --region uk-london-1
+cd internal_doc/regions/uk-london-1/jumphost
+./00-check-config.sh --preparation
+./01-prepare-host.sh
+```
+
+The generator asks only for unknown inputs: existing SSH key path, controlled
+DNS base domain, private node-subnet CIDR and authorized compartment name/ID.
+It reads canonical region and host compartment ID from
+[OCI IMDSv2](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/gettingmetadata.htm)
+when available, without asking you to retype discovered IDs. If the deployment
+compartment differs from the host compartment, explicitly supply the authorized
+`--compartment-id` and `--compartment-name`. Discovery is not a permission grant.
+
+Defaults include loopback SSH, the current account, a region-based cluster name,
+planned pod/service CIDRs, and a separate administration media workspace. Review
+network defaults against all connected networks. A new configuration is rejected
+if its DNS identity or overlay ranges collide with saved deployment profiles.
+No target IP is selected and the private key is never copied into the clone.
+
+The generated folder contains:
+
+```text
+community.env                private configuration
+community.optional.env       isolated .state selection
+00-env.sh                    source only for direct oc commands
+00-check-config.sh           offline checks
+01-...sh through 12-...sh     launchers selecting this profile automatically
+START-HERE.txt               ordered commands
+```
+
+All numbered installation commands run from this folder. The launchers resolve
+the shared implementation relative to the clone; keep the folder inside that
+clone. The separate `$ADMIN_WORKDIR` stores downloaded media/authentication and
+is prepared by step 01. You do not need to create, download or upload profile
+files manually. Existing protected configuration/state is reused. Generated
+launchers with user edits are not overwritten. Rerun the generator to add missing
+launchers after an update; do not repeat completed installation steps.
+
+Use `--name <deployment>` for another folder in the same region. Additional
+options are available via `00-create-workspace.sh --help`, including `--ssh-key`,
+`--base-domain`, `--machine-cidr`, `--cluster-name`, `--pod-cidr`, `--service-cidr`
+and `--admin-workdir`. `--non-interactive` fails on missing values instead of
+prompting. Configuration files are mode 600; launchers and their folder are mode
+700. Generated output remains under Git-ignored `internal_doc/regions/`.
+
+The regional source wrappers and env examples below remain available for advanced
+orchestration. The generated-folder workflow is the normal jump-host entry point.
 
 ## Required before image preparation
 
