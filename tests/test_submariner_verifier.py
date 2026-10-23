@@ -33,16 +33,28 @@ class VerifierTests(unittest.TestCase):
    w=N(state=Path(tmp),version='0.24.2',bin=Path(tmp)/'subctl',env={'SUBMARINER_TARGET_ID':'target','SUBMARINER_PEER_ID':'peer'})
    w.selection=lambda peer: (['oc','--kubeconfig','peer' if peer else 'target'],Path(tmp)/('peer' if peer else 'target'),'same-context')
    role={'metadata':{'name':m.ROLE},'rules':[dict(apiGroups=['security.openshift.io'],resources=['securitycontextconstraints'],resourceNames=['nonroot-v2'],verbs=['use'])]}
-   w.read=Mock(side_effect=[role,role,{'metadata':{'uid':'ns-uid'}}])
+   w.read=Mock(side_effect=[role,role])
    now=datetime.datetime.now(datetime.timezone.utc)
    ns={'metadata':dict(name='e2e-tests-discovery-abc',uid='ns-uid',creationTimestamp=now.isoformat(),labels={'pod-security.kubernetes.io/enforce':'privileged','security.openshift.io/scc.podSecurityLabelSync':'false'})}
    child=Mock(stdout=iter(['Generated namespace "e2e-tests-discovery-abc" in cluster "target" to execute tests in\n']))
    child.wait.return_value=0;child.poll.return_value=0
-   with patch.object(m.subprocess,'Popen',return_value=child),patch.object(m.subprocess,'run',side_effect=[N(returncode=0,stdout=json.dumps(ns)),N(returncode=0,stdout='')]) as calls,patch.object(m,'run',side_effect=['v0.24.2','',json.dumps({'metadata':{'uid':'binding-uid'}})]) as invoke:
+   with patch.object(m.subprocess,'Popen',return_value=child),patch.object(m.subprocess,'run',side_effect=[N(returncode=0,stdout=json.dumps(ns)),N(returncode=0,stdout=json.dumps(ns)),N(returncode=0,stdout=json.dumps({'metadata':{'uid':'binding-uid'}})),N(returncode=0,stdout='')]) as calls,patch.object(m,'run',side_effect=['v0.24.2','']) as invoke:
     m.verify(w)
-   create=invoke.call_args_list[2]
-   self.assertIn('create',create.args[0]);self.assertEqual(json.loads(create.args[1])['roleRef']['name'],m.ROLE)
+   create=calls.call_args_list[2]
+   self.assertIn('create',create.args[0]);self.assertEqual(json.loads(create.kwargs['input'])['roleRef']['name'],m.ROLE)
    self.assertEqual(json.loads((Path(tmp)/'verifier-run.json').read_text())['namespaces']['target/e2e-tests-discovery-abc']['rolebinding_uid'],'binding-uid')
    self.assertIn('rolebinding',calls.call_args_list[-1].args[0])
+
+ def test_completed_namespace_does_not_abort_native_suite_or_receive_grant(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   w=N(state=Path(tmp),version='0.24.2',bin=Path(tmp)/'subctl',env={'SUBMARINER_TARGET_ID':'target','SUBMARINER_PEER_ID':'peer'})
+   w.selection=lambda peer: (['oc'],Path(tmp)/('peer' if peer else 'target'),'context')
+   role={'metadata':{'name':m.ROLE},'rules':[dict(apiGroups=['security.openshift.io'],resources=['securitycontextconstraints'],resourceNames=['nonroot-v2'],verbs=['use'])]}
+   w.read=Mock(side_effect=[role,role]);now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+   ns={'metadata':dict(name='e2e-tests-dataplane-status-abc',uid='ns-uid',creationTimestamp=now,deletionTimestamp=now,labels={'pod-security.kubernetes.io/enforce':'privileged','security.openshift.io/scc.podSecurityLabelSync':'false'}),'status':{'phase':'Terminating'}}
+   child=Mock(stdout=iter(['Generated namespace "e2e-tests-dataplane-status-abc" in cluster "target" to execute tests in\n']));child.wait.return_value=0;child.poll.return_value=0
+   with patch.object(m.subprocess,'Popen',return_value=child),patch.object(m.subprocess,'run',return_value=N(returncode=0,stdout=json.dumps(ns))) as calls,patch.object(m,'run',return_value='v0.24.2') as invoke:
+    m.verify(w)
+   invoke.assert_called_once();self.assertEqual(calls.call_count,1)
 
 if __name__=='__main__':unittest.main()

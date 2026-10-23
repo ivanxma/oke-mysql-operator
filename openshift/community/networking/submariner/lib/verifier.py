@@ -61,20 +61,36 @@ def verify(w):
             key=cluster_id+'/'+name
             if key in recorded:continue
             side=sides[cluster_id];base=side['base']
-            deadline=time.monotonic()+20
+            deadline=time.monotonic()+3
             while True:
                 result=subprocess.run(base+['get','namespace',name,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=40)
                 require(result.returncode==0,'Cannot inspect verifier namespace; no permissions granted.')
                 if result.stdout.strip():break
-                require(time.monotonic()<deadline,'Verifier namespace did not appear.')
+                if time.monotonic()>=deadline:break
                 time.sleep(.2)
+            if not result.stdout.strip():
+                print('VERIFIER: test namespace already absent; no permission change.',flush=True);continue
             namespace=json.loads(result.stdout);uid=checked_namespace(namespace,name,started)
+            if namespace.get('metadata',{}).get('deletionTimestamp') or namespace.get('status',{}).get('phase')=='Terminating':
+                print('VERIFIER: test namespace already terminating; no permission change.',flush=True);continue
             existing=run(base+['get','rolebinding',NAME,'-n',name,'--ignore-not-found','-o','json']).strip()
             require(not existing,'Unexpected existing verifier RoleBinding; preserve it and stop.')
             # Recheck namespace identity immediately before this namespace-only grant.
-            require(w.read(side['peer'],'get','namespace',name)['metadata']['uid']==uid,'Verifier namespace identity changed.')
-            output=run(base+['create','-f','-','-o','json'],json.dumps(binding(name,uid,run_id)))
-            created=json.loads(output);granted.append((side,name,created['metadata']['uid']))
+            latest=subprocess.run(base+['get','namespace',name,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=40)
+            require(latest.returncode==0,'Cannot recheck namespace identity.')
+            if not latest.stdout.strip():continue
+            latest=json.loads(latest.stdout);require(latest['metadata']['uid']==uid,'Verifier namespace identity changed.')
+            if latest['metadata'].get('deletionTimestamp'):continue
+            result=subprocess.run(base+['create','-f','-','-o','json'],input=json.dumps(binding(name,uid,run_id)),capture_output=True,text=True,timeout=40)
+            if result.returncode:
+                after=subprocess.run(base+['get','namespace',name,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=40)
+                require(after.returncode==0,'Cannot inspect test namespace after grant failure.')
+                if not after.stdout.strip():continue
+                after=json.loads(after.stdout);require(after['metadata']['uid']==uid,'Verifier namespace identity changed after grant failure.')
+                if after['metadata'].get('deletionTimestamp') or after.get('status',{}).get('phase')=='Terminating':
+                    print('VERIFIER: test completed during namespace grant; no permission change.',flush=True);continue
+                raise ValueError('Test namespace admission grant failed: '+result.stderr.strip()[:300])
+            created=json.loads(result.stdout);granted.append((side,name,created['metadata']['uid']))
             recorded[key]=dict(namespace_uid=uid,rolebinding_uid=created['metadata']['uid']);persist()
             print('VERIFIER: temporary nonroot-v2 access for default SA in '+name+' on '+cluster_id+' only.',flush=True)
         code=process.wait()
