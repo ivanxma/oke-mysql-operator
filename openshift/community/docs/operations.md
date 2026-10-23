@@ -334,3 +334,40 @@ keys. Repeat DNS verification and environment validation afterward.
 
 References: [private-zone negative caching](https://docs.oracle.com/en-us/iaas/Content/DNS/Tasks/troubleshooting_nxdomain-error.htm),
 [OKD single-node monitoring](https://docs.okd.io/latest/installing/installing_sno/install-sno-installing-sno.html).
+## Replace a terminated lab control plane
+
+Run `05-replace-terminated-target.sh <new-private-IP> --previous-instance-id
+<terminated-instance-OCID>` from the generated folder **on the existing jump
+host**. Preview is read-only. Add `--apply` after reviewing it. This path is a
+disposable lab reinstall, not recovery of data from the terminated cluster.
+
+The script uses instance-principal authentication in the configured region and
+compartment. It requires the previous VM to be `TERMINATED` and the new private
+VM to be `RUNNING` from the exact image recorded by this workspace. It refuses
+wrong-compartment instances, another image, ambiguous address assignments and
+inconsistent saved registrations before cleaning up.
+
+Apply archives the previous node registration, verified target, acceptance and
+validation reports, installer log and node-bound DNS-discovery receipt under
+`$OKD_STATE_DIR/history/`. It backs up SSH state and removes only the previous
+target's known-host entry. Image import, bucket, tools, installer metadata and
+matching `sno/auth` files are retained; do not rebuild those after launching a VM
+from the existing image. Use fresh installation media for a separate deployment
+or an image whose embedded installation credentials have expired.
+
+It then calls numbered scripts in order: `05-register-node-ip.sh`,
+`01-prepare-host.sh --ssh-only`, `05-discover-dns-view.sh`,
+`05-configure-dns.sh --apply`, and `05-verify-dns.sh --wait 600`. DNS uses a guarded
+patch to remove stale A values and add the replacement at **only** `api`,
+`api-int` and `*.apps` for the selected cluster zone. Other names/types and the
+zone are preserved. A conflicting CNAME fails for review; it is not deleted.
+There is no delete/recreate gap that would deliberately generate NXDOMAIN.
+
+OCI readback can pass before cached old positive answers expire. Wait for both
+hosts to pass DNS verification. SSH failures are probe errors, not DNS failures;
+if first-boot installation changed the key, use `05-refresh-target-host-key.sh`
+as described below, then rerun replacement with the same arguments. A retry
+revalidates the cloud and keeps already-current registration/acceptance state.
+After DNS, run environment validation, the installer wait command and acceptance
+steps 06/11. No cluster readiness is inferred from DNS success.
+

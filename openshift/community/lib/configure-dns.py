@@ -102,6 +102,9 @@ def configure(work, compartment_id, compartment_name, region, domain, address, a
     if not etag:
         raise ValueError('No DNS records ETag; refusing unguarded update')
     operations = plan_records(response.data.items, domain, address)
+    removed = [op for op in operations if op['operation'] == 'REMOVE']
+    if removed:
+        print('Replacing %s stale A record(s) at the three cluster names; unrelated records and the zone are preserved.' % len(removed), flush=True)
     for prefix in ('api.', 'api-int.', '*.apps.'):
         print(prefix + domain + ' A ' + address, flush=True)
     if not operations:

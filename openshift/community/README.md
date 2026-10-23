@@ -114,6 +114,33 @@ for read-only SSH diagnostics. When the API responds, use
 [bootstrap diagnostic and recovery sequence](docs/operations.md#bootstrap-api-and-installer-diagnostics).
 Do not rebuild the image to retry monitoring.
 
+## Replace a terminated control-plane VM
+
+For a disposable lab rebuild using the **same prepared custom image**, manually
+terminate the previous VM and create its replacement first. On the existing jump
+host, refresh the generated launchers after `git pull` by rerunning step 00 from
+the clone root with the same region/name. Existing configuration is retained.
+Then, from the generated folder:
+
+```bash
+read -r -p "New VM private IP: " node_ip
+read -r -p "Terminated previous VM instance OCID: " previous_instance
+./05-replace-terminated-target.sh "$node_ip" --previous-instance-id "$previous_instance"
+./05-replace-terminated-target.sh "$node_ip" --previous-instance-id "$previous_instance" --apply
+unset node_ip previous_instance
+./00-validate-environment.sh --existing-target
+./05-wait-for-control-plane.sh
+./06-check-control-plane.sh
+./11-verify-web-access.sh
+```
+
+The first command previews. `--apply` verifies both VMs, archives stale target
+state, registers the replacement, replaces old addresses at the three cluster DNS
+names and waits for DNS verification. It preserves other records, the zone and
+image-bound auth files. If the installed OS changes its SSH host key, follow the
+host-key recovery step above, then rerun the replacement command safely.
+See [replacement details](docs/operations.md#replace-a-terminated-lab-control-plane).
+
 ## Details and optional work
 
 - [Generated folder and configuration options](docs/configuration.md)
