@@ -228,6 +228,7 @@ keys. Repeat DNS verification and environment validation afterward.
 | Authentication/console degraded | Inspect OAuth endpoints, ingress and control-plane discovery/readiness before treating it as a password problem. |
 | Some old installer pods Failed | Read their timestamps/logs and compare with current revision/status; historical failures alone do not prove a current stall. |
 | Monitor appears silent | Updated monitor streams events and emits snapshots. Stop only the old monitor with Ctrl-C, then rerun it. |
+| API readyz passes but reading nodes times out | Resource queries allow 30s per API request and 40s per command; older monitors allowed only 4s. Update and restart monitoring. Continued timeouts need API/resource diagnostics; readiness of one endpoint alone does not confirm completion. |
 | Changed SSH host key | Follow [target host-key recovery](#target-host-key-recovery), then repeat DNS and environment validation. |
 | OCI scope conflict | Select the correct private profile. Do not copy another cluster's bucket, view, image or node registration. |
 

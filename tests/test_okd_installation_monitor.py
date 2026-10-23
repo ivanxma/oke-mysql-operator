@@ -62,6 +62,17 @@ class MonitorTests(unittest.TestCase):
         with patch.object(monitor,'execute',side_effect=data) as execute,patch.object(monitor,'emit'):
             self.assertTrue(monitor.snapshot('oc',{},'cluster.invalid','192.0.2.20'))
         self.assertTrue(all(call.args[0][0]=='getent' or 'get' in call.args[0] for call in execute.call_args_list))
+        for call in execute.call_args_list[2:]:
+            self.assertIn('--request-timeout=30s',call.args[0])
+            self.assertEqual(call.args[2],40)
+
+    def test_resource_timeout_does_not_report_cluster_ready(self):
+        responses=[(0,'192.0.2.20 STREAM',''),(0,'ok',''),(1,'','context deadline exceeded')]
+        with patch.object(monitor,'execute',side_effect=responses),patch.object(monitor,'emit') as emit:
+            self.assertFalse(monitor.snapshot('oc',{},'cluster.invalid','192.0.2.20'))
+        messages=[c.args[0] for c in emit.call_args_list]
+        self.assertTrue(any('Querying nodes' in message for message in messages))
+        self.assertTrue(any('completion is NOT confirmed' in message for message in messages))
 
 class StreamTests(unittest.TestCase):
     def setUp(self):

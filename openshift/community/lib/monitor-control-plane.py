@@ -77,9 +77,11 @@ def snapshot(oc, env, domain, address):
     emit('API: readyz=ok; inspecting nodes and cluster operators...')
     data = []
     for resource in ('nodes','clusteroperators'):
-        rc, output, error = execute(command+['get',resource,'-o','json'],env)
+        emit('Querying '+resource+' (API request timeout 30s; command limit 40s)...')
+        rc, output, error = execute([str(oc),'--request-timeout=30s','get',resource,'-o','json'],env,40)
         if rc:
             emit('WAITING: cannot read '+resource+' — '+(error.strip() or 'request failed').splitlines()[0][:240])
+            emit('API readyz passed, but resource inspection failed; cluster completion is NOT confirmed.')
             return False
         try:
             data.append(json.loads(output)['items'])
