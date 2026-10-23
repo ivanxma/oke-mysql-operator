@@ -88,6 +88,11 @@ DNS discovery is saved automatically. Require **8 PASS, 0 FAIL** for DNS, then
 resolve environment failures and review warnings. Publication/cache refresh can
 take time. DNS must work during bootstrap; preserve installation state on retries.
 
+If TARGET reports a changed SSH host identity after first boot, stop polling and
+follow [target host-key recovery](docs/operations.md#target-host-key-recovery).
+Run `05-refresh-target-host-key.sh` only after checking the target fingerprint
+through the OCI serial console; then repeat DNS verification and validation.
+
 ## 05–11. Complete and accept
 
 ```bash

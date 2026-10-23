@@ -180,6 +180,8 @@ unset node_ip
 ./05-configure-dns.sh
 ./05-configure-dns.sh --apply
 ./05-verify-dns.sh --wait 600
+# If SSH identity changed: see docs/operations.md, verify the console fingerprint,
+# then run 05-refresh-target-host-key.sh before repeating DNS verification.
 ./00-validate-environment.sh --existing-target
 ./05-wait-for-control-plane.sh
 ./06-check-control-plane.sh

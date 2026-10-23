@@ -145,6 +145,50 @@ installer ISO, and requires typing `DELETE`. It deletes only that generated ISO.
 Base ISO, cloud image/object, credentials and receipts remain. Do not rerun
 build/import merely to monitor an installed cluster after cleanup.
 
+## Target host-key recovery
+
+The live installer and installed CoreOS can present different SSH host keys.
+An IP reused by a replacement VM can also have a different key. Step 01 refreshes
+SSH settings but deliberately preserves saved identities. A changed key needs
+independent verification; DNS polling cannot fix it.
+
+For an existing checkout, run `git pull` from the repository root, then rerun
+`./openshift/community/00-create-workspace.sh --region <selected-region>` with
+the same deployment name/options used originally. This adds the new launcher to
+the existing private execution folder without repeating installation steps.
+Return to that folder. Stop any DNS poll with Ctrl-C.
+
+**Target VM · OCI serial console · read-only verification**
+
+```bash
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+Confirm this is the intended VM in the selected region/compartment. Obtain its
+ED25519 `SHA256:...` value through that console, not from the failing SSH session
+or an unverified network scan.
+
+**Jump host · generated execution folder · verification, then local state update**
+
+```bash
+read -r -p "Target ED25519 fingerprint from OCI serial console: " fingerprint
+./05-refresh-target-host-key.sh --fingerprint "$fingerprint"
+# Only after preview passes: back up known_hosts and update this target entry.
+./05-refresh-target-host-key.sh --fingerprint "$fingerprint" --apply
+unset fingerprint
+./05-verify-dns.sh --wait 600
+./00-validate-environment.sh --existing-target
+./05-wait-for-control-plane.sh
+```
+
+Stop on any failure. The preview reads the target public key through the existing
+verified admin connection, checks the supplied fingerprint, and tests SSH with
+that exact key in temporary private state. It leaves saved identities unchanged.
+`--apply` repeats these checks, saves a protected backup under `OKD_STATE_DIR`,
+and replaces only the registered target's entries. Other saved host identities
+remain. It changes no VM, DNS, cluster or OCI resources and never disables host
+identity checking. A fingerprint mismatch stops recovery; investigate the VM/IP.
+
 ## Troubleshooting
 
 | Symptom | What to check |
@@ -160,7 +204,7 @@ build/import merely to monitor an installed cluster after cleanup.
 | Authentication/console degraded | Inspect OAuth endpoints, ingress and control-plane discovery/readiness before treating it as a password problem. |
 | Some old installer pods Failed | Read their timestamps/logs and compare with current revision/status; historical failures alone do not prove a current stall. |
 | Monitor appears silent | Updated monitor streams events and emits snapshots. Stop only the old monitor with Ctrl-C, then rerun it. |
-| Changed SSH host key | Verify the intended VM and live-media-to-installed transition. Do not disable checking or remove unrelated known-host entries. |
+| Changed SSH host key | Follow [target host-key recovery](#target-host-key-recovery), then repeat DNS and environment validation. |
 | OCI scope conflict | Select the correct private profile. Do not copy another cluster's bucket, view, image or node registration. |
 
 References: [private-zone negative caching](https://docs.oracle.com/en-us/iaas/Content/DNS/Tasks/troubleshooting_nxdomain-error.htm),
