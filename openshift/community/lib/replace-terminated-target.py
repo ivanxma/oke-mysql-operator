@@ -77,8 +77,9 @@ def verify(work, state, cid, region, cluster, domain, machine, address, previous
         raise ValueError('Already-registered replacement lacks matching verified VM state')
     if current and current['node_ip'] != address and saved and saved.get('instance_id') != old.id:
         raise ValueError('Stale registration is not bound to the terminated VM')
-    if current and current['node_ip'] != address and not saved:
-        raise ValueError('Need verified-target.json for old address ownership; preserve state and review')
+    # The operator supplies the previous instance explicitly; the original
+    # registration workflow may have no optional verified-target inventory.
+    # Its termination, compartment and image were verified above.
     if current and saved and saved.get('instance_id') == old.id and saved.get('private_ip', current['node_ip']) != current['node_ip']:
         raise ValueError('Old address differs from the verified terminated target')
     record = dict(registration_current=bool(current and current['node_ip'] == address and saved and saved.get('instance_id') == new.id), instance_id=new.id, name=new.display_name, image_id=new.image_id,

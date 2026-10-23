@@ -95,6 +95,13 @@ class ReplacementTests(unittest.TestCase):
         self.assertTrue((archive / 'installation-acceptance.json').exists())
         self.assertTrue((archive / 'oci-dns-view.json').exists())
 
+    def test_standard_registration_without_optional_inventory_can_be_replaced(self):
+        (self.state / 'verified-target.json').unlink()
+        record, current = self.verify()
+        self.assertFalse(record['registration_current'])
+        module.archive_state(str(self.work), str(self.state), current, record)
+        self.assertEqual(json.loads((self.state / 'verified-target.json').read_text())['instance_id'], 'new-instance')
+
     def test_same_address_replacement_still_archives_old_instance_state(self):
         same = dict(self.scope, node_ip='192.0.2.30')
         self.save(self.state / 'node-ip.json', same); self.save(self.work / 'oci-node-ip.json', same)
