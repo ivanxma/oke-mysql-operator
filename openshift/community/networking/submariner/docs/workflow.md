@@ -3,7 +3,8 @@
 Run this workflow **after the London OKD installation has passed acceptance**.
 It retains OVN-Kubernetes and adds Submariner connectivity/Lighthouse discovery.
 It does not install OKE, replace the CNI, replicate storage/databases or automate
-application failover. It makes no OCI networking or IAM changes.
+application failover. Its optional gateway-network step creates dedicated gateway NSGs only; it makes
+no shared security-list, route-table or IAM changes.
 
 The first phase changes **London only**: select a worker gateway, create the
 broker in London and join London. A remote tunnel cannot exist with one member.
@@ -40,9 +41,9 @@ Use OKD step `08-prepare-worker-network.sh` to prepare a compartment-scoped node
 NSG for OVN Geneve before manually creating workers; attach its reported NSG to
 each worker. This does not supply the cross-cluster tunnel rules.
 
-Have the networking owner prepare the approved DRG routes, private DNS and
-scoped security rules. These scripts do not run `subctl cloud prepare` or alter
-shared OCI NSGs/security lists.
+Have the networking owner prepare approved DRG routes and private DNS. Step
+03-prepare-gateway-network.sh prepares scoped gateway rules in dedicated NSGs.
+These scripts do not run `subctl cloud prepare` or alter shared NSGs/security lists.
 
 | Path | Required traffic for this profile |
 | --- | --- |
@@ -128,22 +129,49 @@ credentials to force a rerun. Step 04 reuses an owned saved credential file.
 
 ## Phase 2 — enroll the peer only when ready
 
-Full two-site connectivity requires Submariner on both clusters. Set these in
-the private networking config only when the peer can be changed:
+Full two-site connectivity requires Submariner on both clusters. First join the
+peer worker using OKD step 13, then pass peer OKD steps 06 and 11. Refresh the
+generated networking launchers after updating the clone by rerunning the public
+00 initializer from the selected London profile. Existing credentials are retained.
 
-- `SUBMARINER_ENABLE_PEER=true`, `SUBMARINER_PEER_INSTALLATION_VERIFIED=true`
-  and `SUBMARINER_PEER_NETWORK_REVIEWED=true` after actual peer routes/ports/MTU
-  have been reviewed. A London-only review does not authorize peer enrollment.
-- Peer kubeconfig, exact expected API, machine CIDR, unique ID and exact eligible
-  worker gateway. Leave its context empty to select the current context in that
-  explicit file, or pin the desired context name.
+From the generated London networking folder:
 
 ```bash
+./02-register-peer.sh --peer-region eu-frankfurt-1
+./03-prepare-gateway-network.sh          # Read-only preview
+./03-prepare-gateway-network.sh --apply  # Dedicated gateway NSGs only
+```
+
+Step 02 registers the peer kubeconfig/API, unique cluster ID, machine CIDR and
+exact worker hostname from its generated regional profile and live API. Both
+clusters must be healthy, identities distinct and CIDRs disjoint. It also checks
+the peer Kubernetes version diagnostic and OVN Northbound schema. Only one peer
+worker is selected automatically; ambiguous inventories stop for review. No
+Kubernetes/OCI changes are made by registration. Enrollment is enabled, but the
+separate peer-network review stays false until explicitly acknowledged.
+
+Step 03 verifies enrolled worker/OCI VM/image identities, compartment ownership
+and existing subnet DRG routes for both gateways before any mutation. It creates
+a dedicated NSG per gateway and attaches only that worker VNIC, preserving other
+memberships with ETag guards. Rules are stateful and restricted to the exact peer
+private /32: UDP 4500, ESP protocol 50 and ICMP echo for diagnostics. Existing
+shared security lists must preserve required ICMP fragmentation-needed delivery
+for path MTU. No shared list, route, resolver or IAM is changed.
+
+Review actual gateway paths, broker TCP 6443 reachability and MTU. Rule readback
+is not proof of packet delivery. Then explicitly record the review and enroll:
+
+```bash
+./02-register-peer.sh --peer-region eu-frankfurt-1 --record-reviewed-network
 ./02-validate-environment.sh
 ./07-join-peer.sh
 ./06-show-status.sh
 ./08-verify-connectivity.sh
 ```
+
+The registration writes actual selections to private optional configuration and
+sets the peer-enable flag. It retains separate kubeconfigs; no default kubeconfig
+is used. It does not install a peer operator or reuse the London worker image.
 
 Step 07 labels the peer worker and joins that peer to the London broker. Both
 cluster identities and all CIDR combinations are checked first. The same cluster

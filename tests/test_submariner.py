@@ -40,6 +40,28 @@ class SubmarinerTests(unittest.TestCase):
         self.w.env['SUBMARINER_ENABLE_PEER']='true';self.w.env['SUBMARINER_PEER_INSTALLATION_VERIFIED']='true'
         self.w.env['SUBMARINER_PEER_NETWORK_REVIEWED']='true'
 
+    def test_generated_peer_registration_discovers_fields_without_cluster_writes(self):
+        repo=self.root.resolve()/'repo';selected=repo/'generated/openshift/uk-london-1/jumphost/community.env'
+        selected.parent.mkdir(parents=True);selected.write_text('');selected.chmod(0o600)
+        peer=repo/'generated/openshift/eu-frankfurt-1/jumphost/community.env'
+        peer.parent.mkdir(parents=True);peer.write_text('');peer.chmod(0o600)
+        config=selected.with_name('submariner.env');config.write_text('SUBMARINER_ENABLE_PEER=false\n');config.chmod(0o600)
+        optional=selected.with_name('submariner.optional.env');optional.write_text((DIR/'config.optional.env.example').read_text());optional.chmod(0o600)
+        self.w.env.update(OKD_CONFIG_FILE=str(selected),SUBMARINER_CONFIG_FILE=str(config),OCI_COMPARTMENT_ID='cid')
+        self.w.validation=Mock(return_value={'target':self.target,'peer':self.other});self.w.sub=Mock()
+        self.w.selection=Mock(return_value=(['oc'],self.peer,'same-context'))
+        nodes={'items':[{'metadata':{'name':'worker-peer','labels':{'node-role.kubernetes.io/worker':''}}}]}
+        pods={'items':[{'metadata':{'name':'db'},'status':{'phase':'Running'},'spec':{'containers':[{'name':'nbdb'}]}}]}
+        self.w.read=Mock(side_effect=[nodes,pods])
+        values=dict(KUBECONFIG=str(self.peer),MACHINE_CIDR='198.51.100.0/24',CLUSTER_NAME='peer',BASE_DOMAIN='test',OCI_COMPARTMENT_ID='cid',OCI_REGION='eu-frankfurt-1')
+        with patch.object(module,'__file__',str(repo/'openshift/community/networking/submariner/lib/workflow.py')),patch.object(module,'run',side_effect=[json.dumps(values),'7.18.0']):
+            self.w.register_peer('eu-frankfurt-1')
+        self.assertIn('SUBMARINER_ENABLE_PEER=true',config.read_text())
+        self.assertIn('SUBMARINER_PEER_GATEWAY=worker-peer',optional.read_text())
+        self.assertIn('SUBMARINER_PEER_NETWORK_REVIEWED=false',optional.read_text())
+        self.w.sub.assert_called_once_with(['diagnose','k8s-version'],peer=True)
+        self.assertEqual(json.loads((self.w.state/'peer-registration.json').read_text())['uid'],'peer-uid')
+
     def test_peer_mutations_require_separate_network_review_before_health_or_writes(self):
         self.enable_peer();self.w.env['SUBMARINER_PEER_NETWORK_REVIEWED']='false'
         self.w.health=Mock();self.w.sub=Mock()

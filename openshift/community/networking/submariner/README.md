@@ -2,7 +2,8 @@
 
 Run this optional lab after OKD acceptance and worker provisioning. Start with
 one cluster, then explicitly enable peer enrollment. The scripts retain
-OVN-Kubernetes and do not alter OCI networking or replicate storage/databases.
+OVN-Kubernetes. The optional gateway-network step changes only dedicated,
+compartment-owned NSGs; shared routes/lists and storage/databases are unchanged.
 
 Run on the Linux admin host. Follow the [technical workflow](docs/workflow.md)
 for private configuration, network prerequisites and the exact command order.
@@ -43,3 +44,10 @@ During the first-cluster stage, `06-show-status.sh` requires healthy component
 rollouts, an active selected worker gateway and only local endpoints. It reports
 `LOCAL DEPLOYMENT READY` with zero remote connections expected. This confirms
 local installation; cross-cluster connectivity requires peer enrollment and step 08.
+
+When the second cluster and its worker pass OKD acceptance, register its generated
+profile with `02-register-peer.sh --peer-region eu-frankfurt-1`. Then preview/apply
+`03-prepare-gateway-network.sh` for exact-peer private IPsec NSGs. Follow the
+[peer phase](docs/workflow.md#phase-2--enroll-the-peer-only-when-ready) to review
+paths, join the peer and test connectivity. Live values are discovered from the
+selected generated profiles.

@@ -146,6 +146,67 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
         print('Eligible worker gateways: '+(', '.join(workers) or 'NONE — create/join a SCOS worker before step 03.'))
         print('Next: run ./01-install-subctl.sh there; review compatibility/networking before steps 02–05.')
 
+    def register_peer(self, region, reviewed=False):
+        """Discover a generated peer profile and persist only validated selections."""
+        require(region in ('eu-frankfurt-1',) and self.env.get('OCI_REGION')=='uk-london-1',
+                'This lab registers a Frankfurt peer from the London networking profile.')
+        root=Path(__file__).resolve().parents[5]
+        selected=Path(self.env['OKD_CONFIG_FILE'])
+        require(root/'generated/openshift' in selected.parents,'Use generated installation profiles.')
+        peer_profile=root/'generated/openshift'/region/selected.parent.name/'community.env'
+        require(peer_profile.is_file() and not peer_profile.is_symlink() and not peer_profile.stat().st_mode & 0o077,
+                'Protected generated peer profile required.')
+        fields=('KUBECONFIG','MACHINE_CIDR','CLUSTER_NAME','BASE_DOMAIN','OCI_COMPARTMENT_ID','OCI_REGION')
+        code='import os,json;print(json.dumps({k:os.environ.get(k, "") for k in '+repr(fields)+'}))'
+        values=json.loads(run(['bash','-c','set -e; source "$1" "$2"; python3 -c "$3"','--',
+                              str(root/'openshift/community/regions'/region/'env.sh'),str(peer_profile),code]))
+        require(all(values.values()) and values['OCI_REGION']==region and
+                values['OCI_COMPARTMENT_ID']==self.env.get('OCI_COMPARTMENT_ID'),
+                'Both profiles must select the same explicit compartment; peer scope differs.')
+        self.env.update(SUBMARINER_PEER_KUBECONFIG=values['KUBECONFIG'],
+                        SUBMARINER_PEER_MACHINE_CIDR=values['MACHINE_CIDR'],
+                        SUBMARINER_PEER_API='https://api.'+values['CLUSTER_NAME']+'.'+values['BASE_DOMAIN']+':6443',
+                        SUBMARINER_PEER_ID=values['CLUSTER_NAME'],SUBMARINER_PEER_CONTEXT='',
+                        SUBMARINER_ENABLE_PEER='true',SUBMARINER_PEER_INSTALLATION_VERIFIED='true')
+        nodes=self.read(True,'get','nodes')['items']
+        workers=[n['metadata']['name'] for n in nodes if
+                 'node-role.kubernetes.io/worker' in n['metadata'].get('labels',{}) and
+                 not any(k in n['metadata'].get('labels',{}) for k in ('node-role.kubernetes.io/master','node-role.kubernetes.io/control-plane'))]
+        require(len(workers)==1,'Expected one peer worker for automatic gateway selection; review ambiguous inventory.')
+        self.env['SUBMARINER_PEER_GATEWAY']=workers[0]
+        info=self.validation()  # Enforces health, identity, eligibility and disjoint CIDRs.
+        self.sub(['diagnose','k8s-version'],peer=True)
+        base,_,_=self.selection(True)
+        pods=self.read(True,'get','pods','-n','openshift-ovn-kubernetes')['items']
+        db=[p for p in pods if p.get('status',{}).get('phase')=='Running' and any(c['name']=='nbdb' for c in p['spec']['containers'])]
+        require(bool(db),'Peer OVN Northbound database is not available.')
+        schema=run(base+['-n','openshift-ovn-kubernetes','exec',db[0]['metadata']['name'],'-c','nbdb','--',
+                         'ovsdb-client','get-schema-version','unix:/var/run/ovn/ovnnb_db.sock','OVN_Northbound']).strip()
+        require(bool(re.fullmatch(r'\d+\.\d+\.\d+',schema)) and tuple(map(int,schema.split('.')))>=(6,1,0),'Peer OVN schema must be >=6.1.0.')
+        import shlex
+        config=Path(self.env['SUBMARINER_CONFIG_FILE']);optional=config.with_name(config.stem+'.optional.env')
+        require(config.is_file() and not config.is_symlink() and not config.stat().st_mode & 0o077,
+                'Protected networking config required.')
+        require(optional.is_file() and not optional.is_symlink() and not optional.stat().st_mode & 0o077,
+                'Protected optional networking config required.')
+        updates={k:v for k,v in self.env.items() if k in ('SUBMARINER_PEER_KUBECONFIG','SUBMARINER_PEER_MACHINE_CIDR',
+                 'SUBMARINER_PEER_API','SUBMARINER_PEER_ID','SUBMARINER_PEER_CONTEXT','SUBMARINER_PEER_GATEWAY','SUBMARINER_PEER_INSTALLATION_VERIFIED')}
+        updates['SUBMARINER_PEER_NETWORK_REVIEWED']='true' if reviewed else 'false'
+        def update(path, settings):
+            text=path.read_text()
+            for key,value in settings.items():
+                text,count=re.subn(r'(?m)^(?:export\s+)?'+key+r'=.*$',lambda m:key+'='+shlex.quote(value),text)
+                require(count==1,'Expected exactly one '+key+' in private profile.')
+            temp=path.with_name(path.name+'.tmp-'+secrets.token_hex(4))
+            fd=os.open(temp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'w') as stream:stream.write(text)
+            temp.replace(path)
+        update(optional,updates);update(config,{'SUBMARINER_ENABLE_PEER':'true'})
+        private_write(self.state/'peer-registration.json',dict(region=region,uid=info['peer']['uid'],gateway=workers[0],
+                      ovn_nb_schema=schema,network_review_acknowledged=reviewed))
+        print('Peer registered from generated profile; both clusters healthy and CIDRs disjoint. No cluster/OCI changes.')
+        print('Peer network review '+('recorded; run step 02 validation, then step 07.' if reviewed else 'pending; prepare gateway rules and review routes/ports/MTU before enrollment.'))
+
     def enabled(self, key):
         return self.env.get(key)=='true'
 
@@ -342,6 +403,7 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
 
     def execute(self, action):
         os.umask(0o077)
+        if action=='register-peer': return self.register_peer(sys.argv[2],len(sys.argv)>3 and sys.argv[3]=='true')
         if action=='initialize': return self.initialize()
         if action=='download': return self.download()
         if action=='review': return self.review_local()
