@@ -55,6 +55,9 @@ class NodeProbeTests(unittest.TestCase):
         self.assertNotIn('not-for-report',serialized)
         self.assertNotIn('annotations',serialized)
         self.assertEqual(report['containers'][1]['name'],'etcd')
+        self.assertIn('uptime',report)
+        self.assertIn('kubelet',report)
+        self.assertIn('static_pods',report)
 
     def test_command_timeout_is_explicit(self):
         with patch.object(node.subprocess,'run',side_effect=subprocess.TimeoutExpired('command',10)):

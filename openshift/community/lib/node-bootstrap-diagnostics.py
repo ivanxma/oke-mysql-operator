@@ -51,7 +51,10 @@ def probe(address,compartment):
         raise ValueError('Target metadata differs from selected compartment; no privileged diagnostics run')
     result=dict(address=address,compartment=compartment,services=command(['systemctl','show','bootkube.service','kubelet.service','crio.service','--property=Id,ActiveState,SubState']),
                 listeners=command(['sudo','-n','ss','-ltnp']),
-                bootkube=command(['sudo','-n','journalctl','-u','bootkube.service','--no-pager','-n','35']))
+                bootkube=command(['sudo','-n','journalctl','-u','bootkube.service','--no-pager','-n','35']),
+                uptime=command(['uptime']),
+                kubelet=command(['sudo','-n','journalctl','-u','kubelet.service','--no-pager','-n','45']),
+                static_pods=command(['sudo','-n','find','/etc/kubernetes/manifests','-maxdepth','1','-type','f','-printf','%f\n']))
     containers=command(['sudo','-n','crictl','ps','-a','-o','json'],sanitize=False)
     result['containers']=[]
     if containers['exit']==0:
@@ -85,9 +88,9 @@ def collect(state,address,compartment):
     settings=subprocess.run(['ssh','-F',str(config),'-G','okd-target'],capture_output=True,text=True,timeout=10,check=True)
     if not any(line.split()==['hostname',address] for line in settings.stdout.splitlines()):
         raise ValueError('Saved SSH target differs from NODE_IP; rerun step 01 --ssh-only')
-    print('Read-only target bootstrap diagnostics over SSH; Kubernetes API is not required. SSH/probe limit: 90s.',flush=True)
+    print('Read-only target bootstrap diagnostics over SSH; Kubernetes API is not required. SSH/probe limit: 150s.',flush=True)
     result=subprocess.run(['ssh','-F',str(config),'okd-target',shlex.join(['python3','-','probe',address,compartment])],
-                          input=Path(__file__).read_text(),capture_output=True,text=True,timeout=90)
+                          input=Path(__file__).read_text(),capture_output=True,text=True,timeout=150)
     if result.returncode:
         raise ValueError('Target SSH/bootstrap probe failed. Check VM boot state, SSH identity, account and access; no repair attempted.')
     report=json.loads(result.stdout)
@@ -98,7 +101,12 @@ def collect(state,address,compartment):
     with os.fdopen(descriptor,'w') as stream:
         json.dump(report,stream,indent=2)
     print('FINDING: '+report['finding'],flush=True)
+    print('Uptime: '+report.get('uptime',{}).get('output','not collected').strip(),flush=True)
     print('Services: '+report['services']['output'],flush=True)
+    print('Static pod files: '+report.get('static_pods',{}).get('output','not collected').strip(),flush=True)
+    kubelet_errors=[line for line in report.get('kubelet',{}).get('output','').splitlines()
+                    if re.search(r'failed|error|not found|waiting|timed out|refused',line,re.I)]
+    for line in kubelet_errors[-3:]:print('Kubelet: '+line[:350],flush=True)
     for container in report['containers']:
         print(container['name']+': '+str(container['state']),flush=True)
         if 'logs' in container and container['logs'].get('exit') != 0:

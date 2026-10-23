@@ -373,3 +373,5 @@ steps 06/11. No cluster readiness is inferred from DNS success.
 
 The SSH bootstrap diagnostic labels unavailable/rotated logs as collection failures.
 A collector error is not evidence that etcd itself logged a fatal error.
+The report also includes uptime, recent kubelet messages and static-pod filenames
+for stalled storage-backend initialization, without reading certificate contents.
