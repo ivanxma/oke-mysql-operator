@@ -246,7 +246,20 @@ class SubmarinerTests(unittest.TestCase):
         module.private_write(self.w.state/'clusters.json',{'target':self.target})
         self.w.health=Mock(side_effect=ValueError('unhealthy'))
         self.w.read=Mock(return_value={'metadata':{'uid':'target-uid'}});self.w.sub=Mock()
-        self.w.execute('status');self.w.health.assert_not_called();self.w.sub.assert_called_once_with(['show','all'])
+        with patch.object(module,'local_deployment_ready',return_value=True):self.w.execute('status')
+        self.w.health.assert_not_called()
+        self.assertEqual(self.w.sub.call_args_list[-1].args[0],['show','versions'])
+
+    def test_single_cluster_status_requires_ready_components_and_no_remote_endpoint(self):
+        deps={'items':[{'spec':{'replicas':1},'status':{'readyReplicas':1,'updatedReplicas':1}}]}
+        sets={'items':[{'status':{'desiredNumberScheduled':1,'numberReady':1,'updatedNumberScheduled':1}}]}
+        gateways={'items':[{'metadata':{'name':'worker-target'},'status':{'haStatus':'active','connections':[]}}]}
+        endpoints={'items':[{'spec':{'cluster_id':'target'}}]}
+        self.assertTrue(module.local_deployment_ready(deps,sets,gateways,endpoints,'target','worker-target'))
+        endpoints['items'].append({'spec':{'cluster_id':'peer'}})
+        self.assertFalse(module.local_deployment_ready(deps,sets,gateways,endpoints,'target','worker-target'))
+        endpoints['items'].pop();sets['items'][0]['status']['numberReady']=0
+        self.assertFalse(module.local_deployment_ready(deps,sets,gateways,endpoints,'target','worker-target'))
 
 
 if __name__=='__main__':unittest.main()

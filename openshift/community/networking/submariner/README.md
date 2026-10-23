@@ -38,3 +38,8 @@ with OKD steps `09-build-worker-image.sh` and `10-import-worker-image.sh`, then
 rerun initialization after it joins. After reviewing local network prerequisites, step 02 with
 `--record-reviewed-prerequisites` checks versions/OVN/health and records the private
 review settings. Peer gateway networking needs its own review before enrollment.
+
+During the first-cluster stage, `06-show-status.sh` requires healthy component
+rollouts, an active selected worker gateway and only local endpoints. It reports
+`LOCAL DEPLOYMENT READY` with zero remote connections expected. This confirms
+local installation; cross-cluster connectivity requires peer enrollment and step 08.

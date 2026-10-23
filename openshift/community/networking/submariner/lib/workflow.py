@@ -43,6 +43,20 @@ def broker_operator_reusable(owner, uid, namespace, deployment, resources, versi
     return dict(uid=uid,operator_namespace_uid=namespace['metadata']['uid'],version=version)
 
 
+def local_deployment_ready(deployments, daemonsets, gateways, endpoints, cluster_id, gateway):
+    deployments=deployments.get('items',[]);daemonsets=daemonsets.get('items',[])
+    gateways=gateways.get('items',[]);endpoints=endpoints.get('items',[])
+    if not all((deployments,daemonsets,gateways,endpoints)):return False
+    if any(d.get('status',{}).get('readyReplicas',0)<d['spec'].get('replicas',1) or
+           d.get('status',{}).get('updatedReplicas',0)<d['spec'].get('replicas',1) for d in deployments):return False
+    if any(not d.get('status',{}).get('desiredNumberScheduled') or
+           d['status'].get('numberReady')!=d['status']['desiredNumberScheduled'] or
+           d['status'].get('updatedNumberScheduled')!=d['status']['desiredNumberScheduled'] for d in daemonsets):return False
+    if not any(g['metadata']['name']==gateway and g.get('status',{}).get('haStatus')=='active' and
+               not g['status'].get('statusFailure') and not g['status'].get('connections') for g in gateways):return False
+    return all((e.get('spec',{}).get('cluster_id') or e.get('spec',{}).get('clusterID'))==cluster_id for e in endpoints)
+
+
 class Workflow:
     def __init__(self, env=None):
         self.env=dict(os.environ if env is None else env)
@@ -382,8 +396,17 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
             self.sub(['join',str(self.broker),'--clusterid',side['id'],'--version',self.version,
                       '--cable-driver','libreswan','--label-gateway=false','--natt=false','--check-broker-certificate=true'],peer=peer)
         elif action=='status':
+            if 'peer' not in info:
+                docs=[self.read(False,'get',resource,'-n','submariner-operator') for resource in
+                      ('deployments','daemonsets','gateways.submariner.io','endpoints.submariner.io')]
+                require(local_deployment_ready(*docs,info['target']['id'],info['target']['gateway']),
+                        'LOCAL DEPLOYMENT NOT READY: inspect component rollout/gateway state or unexpected peer endpoints; rerun status, not join.')
+                # Upstream show-all treats zero remote connections as an error,
+                # even though this is the expected first-cluster state.
+                for resource in ('gateways','endpoints','versions'):self.sub(['show',resource])
+                print('LOCAL DEPLOYMENT READY: active worker gateway and healthy components. Remote connections: 0 expected; peer enrollment is disabled.')
+                return
             self.sub(['show','all'])
-            if 'peer' not in info: print('London-only stage: a remote tunnel is not expected until peer enrollment.')
         elif action=='verify':
             self.peer_allowed()
             require('peer' in info,'Enroll two distinct clusters before verification.')

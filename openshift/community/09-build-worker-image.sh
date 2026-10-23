@@ -21,6 +21,12 @@ oc get clusterversion version -o json | jq -e --arg v "$version" '
   and all(.status.conditions[]; .type!="Progressing" or .status=="False")' >/dev/null || {
   echo 'Cluster must have completed the selected release; do not build during an upgrade.' >&2; exit 1;
 }
+oc get clusteroperators -o json | jq -e '.items | length > 0 and all(.[];
+ any(.status.conditions[]; .type=="Available" and .status=="True") and
+ any(.status.conditions[]; .type=="Progressing" and .status=="False") and
+ any(.status.conditions[]; .type=="Degraded" and .status=="False"))' >/dev/null || {
+ echo 'All operators must settle before creating worker media.' >&2; exit 1;
+}
 out="$work/worker-image"
 [[ ! -e $out ]] || { echo 'Existing worker-image directory retained. Archive it explicitly before a fresh build.' >&2; exit 1; }
 mkdir -m 700 "$out"

@@ -110,6 +110,8 @@ After control-plane acceptance:
 ./10-import-worker-image.sh
 ```
 
+Step 09 requires the selected release to be complete and every operator to be Available,
+not Progressing and not Degraded. It stops before creating media if that gate fails.
 These create local media and an OCI custom image. Manually launch one new SCOS
 worker from that cluster-specific image first. Attach the dedicated node NSG
 reported by step 08 to every worker. Step 08 attaches the control-plane VNIC and
