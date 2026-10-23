@@ -71,7 +71,7 @@ class RegionTests(unittest.TestCase):
             command=['bash',str(shared/'regions/uk-london-1/00-init-config.sh')]
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            profile=clone/'internal_doc/regions/uk-london-1/community.env'
+            profile=clone/'generated/openshift/uk-london-1/community.env'
             self.assertTrue(profile.is_file())
             self.assertEqual(profile.stat().st_mode & 0o777,0o600)
             profile.write_text('# existing private profile\n')
@@ -178,6 +178,21 @@ class RegionTests(unittest.TestCase):
     def test_valid_offline_settings(self):
         errors, _ = checks.validate(self.values, config_path=self.config)
         self.assertEqual(errors, [])
+
+    def test_generated_location_is_accepted(self):
+        import unittest.mock
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            folder=root/'generated/openshift/uk-london-1/jumphost'
+            folder.mkdir(parents=True)
+            config=folder/'community.env';config.write_text('# synthetic\n');config.chmod(0o600)
+            with unittest.mock.patch.object(checks,'ROOT',root):
+                errors,_=checks.validate({**self.values,'OKD_STATE_DIR':str(folder/'.state')},config_path=config)
+            self.assertEqual(errors,[])
+
+    def test_unrelated_generated_project_state_is_rejected(self):
+        errors,_=checks.validate({**self.values,'OKD_STATE_DIR':str(ROOT/'generated/another-project/state')})
+        self.assertTrue(any('OKD_STATE_DIR' in e for e in errors))
 
     def test_missing_values_reported_together(self):
         cfg={**self.values, 'OCI_COMPARTMENT_ID':'', 'NODE_IP':'', 'BASE_DOMAIN':''}

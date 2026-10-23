@@ -5,7 +5,7 @@ and [community.optional.env.example](../community.optional.env.example). They
 contain placeholders and generic defaults, not deployment inventory.
 
 The step-00 generator creates a mode-600 mandatory profile and optional companion
-under `internal_doc/regions/<region>/<deployment>/`. Existing files are retained.
+under `generated/openshift/<region>/<deployment>/`. Existing files are retained.
 The optional file loads first; explicit primary settings take precedence. The
 low-level regional `00-init-config.sh` remains available for advanced orchestration.
 
@@ -15,7 +15,7 @@ On the OL9 jump host, after git clone, run from the repository root:
 
 ```bash
 ./openshift/community/00-create-workspace.sh --region uk-london-1
-cd internal_doc/regions/uk-london-1/jumphost
+cd generated/openshift/uk-london-1/jumphost
 ./00-check-config.sh --preparation
 ./01-prepare-host.sh
 ```
@@ -58,7 +58,10 @@ options are available via `00-create-workspace.sh --help`, including `--ssh-key`
 `--base-domain`, `--machine-cidr`, `--cluster-name`, `--pod-cidr`, `--service-cidr`
 and `--admin-workdir`. `--non-interactive` fails on missing values instead of
 prompting. Configuration files are mode 600; launchers and their folder are mode
-700. Generated output remains under Git-ignored `internal_doc/regions/`.
+700. Generated output remains under Git-ignored `generated/openshift/`.
+Private HTML documents and historical reports remain under `internal_doc/`.
+The generator writes no new execution files there. Downloads, installer media
+and cluster authentication stay in the separate configured `$ADMIN_WORKDIR`.
 
 The regional source wrappers and env examples below remain available for advanced
 orchestration. The generated-folder workflow is the normal jump-host entry point.
@@ -131,22 +134,23 @@ Scripts do not fall back to `~/.kube/config`. Keep actual profiles, OCIDs,
 addresses, key paths, access records, passwords, kubeconfigs, receipts and logs
 out of the public repository. Keep the private key in its protected key directory.
 
-## Updating an existing checkout after the folder move
+## Existing deployments and the new generated folder
 
-Public OKD regional wrappers now live under `openshift/community/regions/`.
-The former root-level folder belonged to OKD; it was not an OKE installation
-component. Private profiles and generated state remain in `internal_doc/regions/`.
+New clones generate runtime files only under
+`generated/openshift/<region>/<deployment>/`. Regenerate launchers there after
+`git pull` using the same region/name. Configuration and `.state` are retained.
 
-From the repository root, with the existing profile already selected:
+Existing workspaces previously generated under `internal_doc/regions/` continue
+to work with their explicit `OKD_CONFIG_FILE` and numbered launchers. They are not
+automatically moved or copied: SSH and OCI receipts can contain absolute paths.
+Keep using the existing folder for that active installation. Do not rebuild or
+retarget it solely because the default output directory changed.
 
-```bash
-git pull --ff-only
-source ./openshift/community/regions/uk-london-1/env.sh "$OKD_CONFIG_FILE"
-```
+For the planned full teardown and replacement, start with a fresh clone on the
+new jump host and generate the new folder there. Do not upload the Mac's profiles,
+old receipts or kubeconfig. Retain historical HTML documents on the Mac.
 
-In a fresh shell, explicitly supply the existing private profile path instead of
-an unset `OKD_CONFIG_FILE`. If a private helper references the old root `regions/`
-path, update its selector to the new public path, or source the regional env
-script directly. Keep the same private profile, workspace, bucket and state.
-Continue at the next unfinished step; no download, host preparation, image build
-or VM creation needs repeating solely because the source folder moved.
+Duplicate identity/CIDR checks inspect both generated profiles and legacy private
+profiles saved in this checkout. If a retired profile blocks a new deployment,
+archive its configuration/state outside those active inventory folders after
+confirming teardown; do not remove shared profiles or bypass collision checks.

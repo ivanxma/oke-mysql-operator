@@ -14,8 +14,8 @@ workflow, [sample configuration](openshift/community/community.env.example) and
 [technical docs](openshift/community/docs/installation.md). Run step 00 on the
 jump host to generate a private execution folder, then run numbered installation
 scripts there. [Regional wrappers](openshift/community/regions/README.md) remain
-available for advanced orchestration. Real deployment data stays in
-Git-ignored `internal_doc/`.
+available for advanced orchestration. Runtime profiles and state stay in
+Git-ignored `generated/openshift/`; private documents remain in `internal_doc/`.
 
 For MySQL on that OKD cluster, use the numbered
 [OpenShift MySQL Operator and ClusterSet scripts](openshift/mysql-operator/README.md).

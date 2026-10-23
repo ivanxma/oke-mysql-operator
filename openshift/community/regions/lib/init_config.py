@@ -12,7 +12,7 @@ def main():
     region = sys.argv[1]
     if region not in REGIONS or len(sys.argv) != 2:
         raise ValueError('Usage: 00-init-config.sh (no arguments)')
-    folder = ROOT / 'internal_doc/regions' / region
+    folder = ROOT / 'generated/openshift' / region
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     template = (ROOT / 'openshift/community/community.env.example').read_text()
     template = template.replace('# Copy this template to internal_doc/openshift/community.env (ignored by Git).',

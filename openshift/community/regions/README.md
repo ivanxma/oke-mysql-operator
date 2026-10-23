@@ -16,7 +16,7 @@ from the repository root:
 
 ```bash
 ./openshift/community/regions/uk-london-1/00-init-config.sh
-${EDITOR:-vi} internal_doc/regions/uk-london-1/community.env
+${EDITOR:-vi} generated/openshift/uk-london-1/community.env
 source ./openshift/community/regions/uk-london-1/env.sh ""
 ./openshift/community/regions/uk-london-1/00-check-config.sh --preparation
 ```
@@ -24,7 +24,7 @@ source ./openshift/community/regions/uk-london-1/env.sh ""
 Then run that region's numbered wrappers in the same order as the shared guide.
 Replace the region folder when selecting another site. Each profile has its own
 workspace, kubeconfig, SSH state and generated registrations. Real values belong
-in Git-ignored `internal_doc/`; private keys remain in their protected key folder.
+in Git-ignored `generated/openshift/`; private keys remain in their protected key folder.
 
 Sample files: [mandatory environment](../community.env.example)
 and [optional overrides](../community.optional.env.example).

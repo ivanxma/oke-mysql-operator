@@ -9,8 +9,14 @@ if [[ -n ${OKD_REGION:-} ]]; then
   unset _okd_env_dir
   return 0 2>/dev/null || exit 0
 fi
-export OKD_STATE_DIR=${OKD_STATE_DIR:-$_okd_env_dir/../../internal_doc/openshift/.state}
-export OKD_CONFIG_FILE=${OKD_CONFIG_FILE:-$_okd_env_dir/../../internal_doc/openshift/community.env}
+if [[ -z ${OKD_CONFIG_FILE:-} ]]; then
+  OKD_CONFIG_FILE=$_okd_env_dir/../../generated/openshift/legacy/community.env
+  if [[ ! -f $OKD_CONFIG_FILE && -f $_okd_env_dir/../../internal_doc/openshift/community.env ]]; then
+    OKD_CONFIG_FILE=$_okd_env_dir/../../internal_doc/openshift/community.env
+  fi
+fi
+export OKD_CONFIG_FILE
+export OKD_STATE_DIR=${OKD_STATE_DIR:-$(dirname -- "$OKD_CONFIG_FILE")/.state}
 if [[ -f ${OKD_CONFIG_FILE%.env}.optional.env ]]; then
   source "${OKD_CONFIG_FILE%.env}.optional.env" || { return 1 2>/dev/null || exit 1; }
 fi

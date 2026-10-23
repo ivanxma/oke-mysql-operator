@@ -47,13 +47,13 @@ def validate(cfg, peers=(), config_path=None, preparation=False):
         if not kube.is_absolute() or '..' in kube.parts or work not in kube.parents or ':' in str(kube):
             errors.append('KUBECONFIG must be one absolute file inside this regional ADMIN_WORKDIR.')
     state = Path(cfg.get('OKD_STATE_DIR', ''))
-    private = (ROOT / 'internal_doc').resolve()
-    if not state.is_absolute() or private not in state.resolve().parents:
-        errors.append('OKD_STATE_DIR must be inside the ignored internal_doc directory.')
+    private_roots = ((ROOT/'generated/openshift').resolve(),(ROOT/'internal_doc').resolve())
+    if not state.is_absolute() or not any(private in state.resolve().parents for private in private_roots):
+        errors.append('OKD_STATE_DIR must be inside ignored generated/openshift (or an existing internal_doc deployment).')
     if config_path:
         path = Path(config_path)
-        if private not in path.resolve().parents:
-            errors.append('Keep regional configuration inside internal_doc.')
+        if not any(private in path.resolve().parents for private in private_roots):
+            errors.append('Keep regional configuration inside ignored generated/openshift (or an existing internal_doc deployment).')
         if path.stat().st_mode & 0o077:
             errors.append('Private regional config must have mode 600 or stricter.')
     networks = {}
@@ -111,7 +111,7 @@ def validate(cfg, peers=(), config_path=None, preparation=False):
             errors.append('Both sites must select the same authorized compartment name.')
         if peer.get('CLUSTER_NAME') and (cfg.get('CLUSTER_NAME'), cfg.get('BASE_DOMAIN')) == (peer.get('CLUSTER_NAME'), peer.get('BASE_DOMAIN')):
             errors.append('The other regional cluster already uses this cluster DNS identity.')
-        peer_state = peer.get('OKD_STATE_DIR') or str(ROOT/'internal_doc/regions'/peer.get('OCI_REGION', '')/'.state')
+        peer_state = peer.get('OKD_STATE_DIR') or str(ROOT/'generated/openshift'/peer.get('OCI_REGION', '')/'.state')
         if state.resolve() == Path(peer_state).resolve():
             errors.append('Local SSH/installer state must be separate between regions.')
         if peer.get('ADMIN_HOST') == cfg.get('ADMIN_HOST') and peer.get('ADMIN_WORKDIR'):
@@ -136,9 +136,11 @@ def main():
     peers = []
     for other in REGIONS:
         if other != region:
-            path = ROOT/'internal_doc/regions'/other/'community.env'
-            if path.is_file():
-                peers.append(peer_config(path))
+            for inventory in (ROOT/'generated/openshift'/other,ROOT/'internal_doc/regions'/other):
+                if inventory.is_dir():
+                    for path in inventory.rglob('community.env'):
+                        if path.is_file():
+                            peers.append(peer_config(path))
     errors, warnings = validate(os.environ, peers, os.environ['OKD_CONFIG_FILE'],preparation=options.preparation)
     for text in errors:
         print('FAIL: ' + text)

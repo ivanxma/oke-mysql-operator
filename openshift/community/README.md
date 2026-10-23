@@ -29,12 +29,13 @@ again.
 ./openshift/community/00-create-workspace.sh --region uk-london-1
 ```
 
-This creates `<clone>/internal_doc/regions/uk-london-1/jumphost/` with the private
+This creates `<clone>/generated/openshift/uk-london-1/jumphost/` with the private
 configuration and numbered launch scripts. `jumphost` is the default folder name;
-no manual `mkdir` is needed. After successful generation, enter it:
+no manual `mkdir` or upload from a workstation is needed. `internal_doc/` is for
+private documents, not new execution folders. After successful generation, enter it:
 
 ```bash
-cd internal_doc/regions/uk-london-1/jumphost
+cd generated/openshift/uk-london-1/jumphost
 ```
 
 An existing private folder is reused. Resume the next unfinished step.
@@ -120,4 +121,5 @@ Do not rebuild the image to retry monitoring.
 - [Submariner](networking/submariner/README.md) · [MySQL Operator](../mysql-operator/README.md)
 - [Sample mandatory env](community.env.example) · [Optional settings](community.optional.env.example)
 
-Generated configuration, state and credentials stay in Git-ignored `internal_doc/`.
+Generated configuration, state and credentials stay in Git-ignored `generated/openshift/`.
+Private HTML documents and historical reports belong in `internal_doc/`.

@@ -66,15 +66,17 @@ Change to the synced source directory, then:
 
 ```bash
 bash
-mkdir -p internal_doc/regions/uk-london-1
+source ./generated/openshift/uk-london-1/jumphost/00-env.sh
+submariner_config="$(dirname -- "$OKD_CONFIG_FILE")/submariner.env"
 cp -n openshift/community/networking/submariner/config.env.example \
-  internal_doc/regions/uk-london-1/submariner.env
-chmod 600 internal_doc/regions/uk-london-1/submariner.env
-${EDITOR:-vi} internal_doc/regions/uk-london-1/submariner.env
+  "$submariner_config"
+chmod 600 "$submariner_config"
+${EDITOR:-vi} "$submariner_config"
+unset submariner_config
 ```
 
-A filled `internal_doc/regions/uk-london-1/community.env` must already exist in
-this source checkout (the same regional inputs as the London installation).
+A filled `generated/openshift/uk-london-1/jumphost/community.env` must already exist
+in this checkout (the same regional inputs as the London installation).
 The environment script selects the London profile and its exported KUBECONFIG;
 it never uses `~/.kube/config`. Kubeconfig paths refer to files on this admin
 host. Credentials are not copied to the Mac by these networking scripts.

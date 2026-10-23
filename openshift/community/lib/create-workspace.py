@@ -118,7 +118,7 @@ def generate(options, info=None):
         raise ValueError('Region must be one of '+', '.join(REGIONS))
     if not re.fullmatch(r'[a-z][a-z0-9-]{0,39}',options.name):
         raise ValueError('Deployment name must use lowercase letters, digits and hyphens')
-    folder=ROOT/'internal_doc/regions'/region/options.name
+    folder=ROOT/'generated/openshift'/region/options.name
     for path in (folder,*folder.parents):
         if path==ROOT:break
         if path.is_symlink():raise ValueError('Refusing symlink in private execution-folder path')
@@ -146,8 +146,9 @@ def generate(options, info=None):
     if values.get('OKD_STATE_DIR') and Path(values['OKD_STATE_DIR']).resolve()!=(folder/'.state').resolve():
         raise ValueError('Existing profile state is outside this generated folder; keep that deployment separate')
     if not existing:
-        private=ROOT/'internal_doc/regions'
-        for peer in private.rglob('community.env') if private.exists() else []:
+        inventories=(ROOT/'generated/openshift',ROOT/'internal_doc/regions')
+        peers=[p for inventory in inventories if inventory.exists() for p in inventory.rglob('community.env')]
+        for peer in peers:
             if peer==profile:continue
             other=load_profile(peer)
             if (other.get('CLUSTER_NAME'),other.get('BASE_DOMAIN'))==(values['CLUSTER_NAME'],values['BASE_DOMAIN']):

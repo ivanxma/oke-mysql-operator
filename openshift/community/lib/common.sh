@@ -2,7 +2,7 @@
 # Shared local SSH wrapper. No connections are made by sourcing this file.
 set -euo pipefail
 COMMUNITY_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-STATE_DIR=${OKD_STATE_DIR:-$COMMUNITY_DIR/../../internal_doc/openshift/.state}
+STATE_DIR=${OKD_STATE_DIR:-$COMMUNITY_DIR/../../generated/openshift/.state}
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "Required command missing: $1"; }
 load_config() {

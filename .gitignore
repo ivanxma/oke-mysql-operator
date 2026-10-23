@@ -1,6 +1,7 @@
 config.env
 clusterset.env
 cluster3.env
+# Generated execution profiles, launchers and private runtime state.
 generated/
 __pycache__/
 /internal_doc/

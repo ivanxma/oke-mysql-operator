@@ -3,7 +3,7 @@
 _sub_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 _sub_root=$(cd -- "$_sub_dir/../../../.." && pwd)
 source "$_sub_root/openshift/community/regions/uk-london-1/env.sh" "" || { return 1 2>/dev/null || exit 1; }
-export SUBMARINER_CONFIG_FILE=${SUBMARINER_CONFIG_FILE:-$_sub_root/internal_doc/regions/uk-london-1/submariner.env}
+export SUBMARINER_CONFIG_FILE=${SUBMARINER_CONFIG_FILE:-$(dirname -- "$OKD_CONFIG_FILE")/submariner.env}
 [[ -f $SUBMARINER_CONFIG_FILE ]] || { printf 'Create the private Submariner config from config.env.example first.\n' >&2; return 1 2>/dev/null || exit 1; }
 set -a
 source "$SUBMARINER_CONFIG_FILE"

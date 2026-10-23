@@ -2,7 +2,8 @@
 
 ## Private documentation and deployment details
 
-- Keep deployment-specific runbooks, live addresses, resource identifiers, SSH key locations, host inventories, generated SSH state, and real configuration under `internal_doc/`. This directory must remain ignored by Git.
+- Keep private documentation, deployment-specific runbooks and historical access inventories under Git-ignored `internal_doc/`.
+- Generate OKD execution profiles, launchers, SSH state and runtime registrations on the jump host under Git-ignored `generated/openshift/<region>/<deployment>/`. Keep real values private in those generated files. Do not upload Mac configuration to initialize a new jump host. Existing legacy deployments under `internal_doc/` may remain in place; do not move their active state implicitly.
 - Scripts must work from any checkout location: resolve supporting files relative to the script, and obtain user-specific local paths from private configuration or environment variables. Never hard-code an absolute local checkout or SSH-key path.
 - Public scripts and example configs must use parameters, environment variables, or empty placeholders. Never hard-code real IP addresses, OCI identifiers, private key paths, credentials, or deployment-specific account details.
 - Read private deployment configuration through `OKD_CONFIG_FILE`. Do not duplicate its values in script source or public documentation.

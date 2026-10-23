@@ -21,7 +21,7 @@ _region_load() (
   : "${ADMIN_USER:=opc}" "${TARGET_USER:=core}" "${OKD_VERSION:=5.0.0-okd-scos.3}"
   : "${INSTALL_DISK:=/dev/sda}" "${WORKER_INSTALL_DISK:=/dev/sda}" "${EXPECTED_NODE_COUNT:=1}"
   OCI_AUTH=instance_principal
-  OKD_STATE_DIR=${OKD_STATE_DIR:-$_region_root/internal_doc/regions/$region/.state}
+  OKD_STATE_DIR=${OKD_STATE_DIR:-$(dirname -- "$config")/.state}
   if [[ -f $OKD_STATE_DIR/bucket.env ]]; then
     source "$OKD_STATE_DIR/bucket.env" || return 1
   fi
@@ -42,7 +42,11 @@ _region_load() (
 # Changing regions without an explicit argument selects that region's default file.
 _region_config=${1:-${OKD_CONFIG_FILE:-}}
 if [[ -z $_region_config || ( ${OKD_SELECTED_REGION:-$OKD_REGION} != "$OKD_REGION" && -z ${1:-} ) ]]; then
-  _region_config=$_region_root/internal_doc/regions/$OKD_REGION/community.env
+  _region_config=$_region_root/generated/openshift/$OKD_REGION/community.env
+  # Use the existing legacy default only when no generated profile exists.
+  if [[ ! -f $_region_config && -f $_region_root/internal_doc/regions/$OKD_REGION/community.env ]]; then
+    _region_config=$_region_root/internal_doc/regions/$OKD_REGION/community.env
+  fi
 fi
 if _region_assignments=$(_region_load "$OKD_REGION" "$_region_config"); then
   eval "$_region_assignments"

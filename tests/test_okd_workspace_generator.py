@@ -39,12 +39,33 @@ class GeneratorTests(unittest.TestCase):
 
     def test_generates_executable_folder_without_copying_key(self):
         folder=self.create()
-        self.assertEqual(folder,self.root/'internal_doc/regions/uk-london-1/jumphost')
+        self.assertEqual(folder,self.root/'generated/openshift/uk-london-1/jumphost')
         self.assertEqual(folder.stat().st_mode&0o777,0o700)
         self.assertEqual((folder/'community.env').stat().st_mode&0o777,0o600)
         self.assertTrue(os.access(folder/'01-prepare-host.sh',os.X_OK))
         self.assertNotIn('synthetic-key-content',(folder/'community.env').read_text())
         self.assertNotIn('NODE_IP=',(folder/'community.env').read_text())
+        self.assertFalse((self.root/'internal_doc').exists())
+
+    def test_generated_offline_checker_accepts_new_private_location(self):
+        folder=self.create()
+        env={k:v for k,v in os.environ.items() if not k.startswith(('OKD_','MYSQL_'))}
+        result=subprocess.run(['bash',str(folder/'00-check-config.sh'),'--preparation'],
+                              env=env,capture_output=True,text=True,cwd='/private/tmp')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('PASS: Local regional configuration',result.stdout)
+        self.assertFalse((self.root/'internal_doc').exists())
+
+    def test_legacy_profile_is_not_copied_or_overwritten(self):
+        folder=self.create()
+        legacy=self.root/'internal_doc/regions/uk-london-1/jumphost'
+        legacy.parent.mkdir(parents=True)
+        shutil.move(str(folder),str(legacy))
+        original=(legacy/'community.env').read_bytes()
+        with self.assertRaisesRegex(ValueError,'cluster DNS identity|Cluster DNS identity'):
+            self.create()
+        self.assertEqual((legacy/'community.env').read_bytes(),original)
+        self.assertFalse(folder.exists())
 
     def test_launcher_selects_generated_profile_after_checkout_relocation(self):
         folder=self.create()
@@ -72,6 +93,7 @@ class GeneratorTests(unittest.TestCase):
     def test_insecure_key_rejected_before_folder_creation(self):
         self.key.chmod(0o644)
         with self.assertRaisesRegex(ValueError,'SSH key'):self.create()
+        self.assertFalse((self.root/'generated').exists())
         self.assertFalse((self.root/'internal_doc').exists())
 
     def test_network_overlap_rejected(self):
@@ -89,7 +111,7 @@ class GeneratorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Deployment name'):self.create(['--name','../../escape'])
 
     def test_symlink_folder_rejected(self):
-        parent=self.root/'internal_doc/regions/uk-london-1';parent.mkdir(parents=True)
+        parent=self.root/'generated/openshift/uk-london-1';parent.mkdir(parents=True)
         (parent/'jumphost').symlink_to(self.root,target_is_directory=True)
         with self.assertRaisesRegex(ValueError,'symlink'):self.create()
 
@@ -129,6 +151,7 @@ class GeneratorTests(unittest.TestCase):
         options=gen.parser().parse_args(['--region','uk-london-1','--non-interactive'])
         with patch.object(gen,'ROOT',self.root),self.assertRaisesRegex(ValueError,'Missing SSH'):
             gen.generate(options,info={})
+        self.assertFalse((self.root/'generated').exists())
         self.assertFalse((self.root/'internal_doc').exists())
 
 if __name__=='__main__':unittest.main()
