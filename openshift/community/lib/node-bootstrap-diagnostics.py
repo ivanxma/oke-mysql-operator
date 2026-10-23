@@ -53,20 +53,29 @@ def probe(address,compartment):
                 listeners=command(['sudo','-n','ss','-ltnp']),
                 bootkube=command(['sudo','-n','journalctl','-u','bootkube.service','--no-pager','-n','35']),
                 uptime=command(['uptime']),
-                kubelet=command(['sudo','-n','journalctl','-u','kubelet.service','--no-pager','-n','45']),
+                kubelet=command(['sudo','-n','journalctl','-u','kubelet.service','--no-pager','-n','200']),
                 static_pods=command(['sudo','-n','find','/etc/kubernetes/manifests','-maxdepth','1','-type','f','-printf','%f\n']))
     containers=command(['sudo','-n','crictl','ps','-a','-o','json'],sanitize=False)
     result['containers']=[]
     if containers['exit']==0:
         try:
             data=json.loads(containers['output'])
-            for name in ('kube-apiserver','etcd','etcd-ensure-env-vars','etcd-resources-copy'):
+            for name in ('kube-apiserver','etcd','setup','etcd-ensure-env-vars','etcd-resources-copy','etcd-cert-syncer'):
                 matches=[c for c in data.get('containers',[]) if c.get('metadata',{}).get('name')==name]
+                if name=='setup':
+                    matches=[c for c in matches if c.get('labels',{}).get('io.kubernetes.pod.namespace')=='openshift-etcd']
                 if not matches:
                     result['containers'].append(dict(name=name,state='not observed'))
                     continue
                 current=max(matches,key=lambda c:c.get('createdAt',0))
                 item=dict(name=name,state=current.get('state'),id=current['id'][:12])
+                if name!='kube-apiserver':
+                    inspected=command(['sudo','-n','crictl','inspect',current['id']],sanitize=False)
+                    if inspected['exit']==0:
+                        try:
+                            status=json.loads(inspected['output']).get('status',{})
+                            item['termination']={key:redact(str(status[key])) for key in ('exitCode','reason','message','startedAt','finishedAt') if key in status}
+                        except (ValueError,KeyError):pass
                 item['logs']=command(['sudo','-n','crictl','logs','--tail=25',current['id']])
                 result['containers'].append(item)
         except (ValueError,KeyError):
@@ -106,9 +115,11 @@ def collect(state,address,compartment):
     print('Static pod files: '+report.get('static_pods',{}).get('output','not collected').strip(),flush=True)
     kubelet_errors=[line for line in report.get('kubelet',{}).get('output','').splitlines()
                     if re.search(r'failed|error|not found|waiting|timed out|refused',line,re.I)]
-    for line in kubelet_errors[-3:]:print('Kubelet: '+line[:350],flush=True)
+    focused=[line for line in kubelet_errors if re.search(r'etcd|create.*container|mount|pull.*image',line,re.I)]
+    for line in (focused or kubelet_errors)[-5:]:print('Kubelet: '+line[:1000],flush=True)
     for container in report['containers']:
         print(container['name']+': '+str(container['state']),flush=True)
+        if container.get('termination'):print('  Status: '+json.dumps(container['termination']),flush=True)
         if 'logs' in container and container['logs'].get('exit') != 0:
             print('  Log collection unavailable; collector errors are not container log evidence. Inspect the private report.',flush=True)
             continue
