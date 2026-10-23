@@ -12,18 +12,32 @@ VM, with optional SCOS workers. This community workflow needs no Red Hat account
 
 ## 00. Clone and generate the working folder
 
-Run in Bash as your normal user:
+Run in Bash as your normal user. Clone once:
 
 ```bash
 sudo dnf install -y git python3 openssh-clients
 git clone https://github.com/ivanxma/oke-mysql-operator.git okd-install
 cd okd-install
+```
+
+For an existing clone, run `git pull --ff-only` from its root instead of cloning
+again.
+
+**Generate the execution folder**, from the cloned repository root:
+
+```bash
 ./openshift/community/00-create-workspace.sh --region uk-london-1
+```
+
+This creates `<clone>/internal_doc/regions/uk-london-1/jumphost/` with the private
+configuration and numbered launch scripts. `jumphost` is the default folder name;
+no manual `mkdir` is needed. After successful generation, enter it:
+
+```bash
 cd internal_doc/regions/uk-london-1/jumphost
 ```
 
-For an existing clone, run `git pull --ff-only`, then the generator command
-above; keep the same private folder and resume the next unfinished step.
+An existing private folder is reused. Resume the next unfinished step.
 
 The generator creates the private configuration and numbered launch scripts.
 It reuses an existing profile, or asks for missing settings. Region and compartment
