@@ -139,7 +139,10 @@ def host_checks(report, cfg):
             except (KeyError, ValueError):
                 matches = False
             report.add('PASS' if matches else 'FAIL', 'Target subnet', 'Observed subnet matches MACHINE_CIDR.' if matches else 'MACHINE_CIDR does not match the observed OCI subnet.')
-        report.add('ACTION', 'OS installation', 'Use CoreOS for cluster nodes. This inventory does not authorize disk writes or establish cluster readiness; use step 06 after installation.')
+        if coreos:
+            report.add('ACTION', 'Cluster readiness', 'CoreOS is present. Monitor bootstrap with step 05, then run step 06 acceptance; host inventory alone does not establish cluster readiness.')
+        else:
+            report.add('ACTION', 'OS installation', 'Use CoreOS for cluster nodes. This inventory does not authorize disk writes or establish cluster readiness; use step 06 after installation.')
     else:
         work = Path(cfg['ADMIN_WORKDIR'])
         parent = work

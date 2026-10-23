@@ -81,7 +81,10 @@ import os
 mode=stat.S_IMODE(os.stat(sys.argv[2]).st_mode)
 add('PASS' if mode & 0o077 == 0 else 'FAIL','Local SSH key permissions',
     'Key permissions restrict group/other access.' if mode & 0o077 == 0 else 'Remove group/other permissions on the configured local SSH private key.')
-add('ACTION','CoreOS installation handoff','Launch a NEW VM from the imported CoreOS installer image. No OL9 target or automated deletion is required.')
+if cfg.get('PLANNED_TARGET') == 'true':
+ add('ACTION','CoreOS installation handoff','Launch a NEW VM from the imported CoreOS installer image. No OL9 target or automated deletion is required.')
+else:
+ add('ACTION','Cluster installation monitoring','Existing target selected. After preflight, run step 05 monitoring and step 06 acceptance; no new VM or reinstallation is requested.')
 print(json.dumps(dict(role='configuration',checks=checks,facts={})))
 PY
 cfg_json=$(cat "$validation_tmp/config.json")
