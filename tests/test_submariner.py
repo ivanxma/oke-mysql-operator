@@ -46,7 +46,7 @@ class SubmarinerTests(unittest.TestCase):
         peer=repo/'generated/openshift/eu-frankfurt-1/jumphost/community.env'
         peer.parent.mkdir(parents=True);peer.write_text('');peer.chmod(0o600)
         config=selected.with_name('submariner.env');config.write_text('SUBMARINER_ENABLE_PEER=false\n');config.chmod(0o600)
-        optional=selected.with_name('submariner.optional.env');optional.write_text((DIR/'config.optional.env.example').read_text());optional.chmod(0o600)
+        optional=selected.with_name('submariner.optional.env');optional.write_text((DIR/'config.optional.env.example').read_text().replace('SUBMARINER_PEER_NETWORK_REVIEWED=false\n',''));optional.chmod(0o600)
         self.w.env.update(OKD_CONFIG_FILE=str(selected),SUBMARINER_CONFIG_FILE=str(config),OCI_COMPARTMENT_ID='cid')
         self.w.validation=Mock(return_value={'target':self.target,'peer':self.other});self.w.sub=Mock()
         self.w.selection=Mock(return_value=(['oc'],self.peer,'same-context'))

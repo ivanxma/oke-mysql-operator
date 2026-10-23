@@ -196,7 +196,8 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
             text=path.read_text()
             for key,value in settings.items():
                 text,count=re.subn(r'(?m)^(?:export\s+)?'+key+r'=.*$',lambda m:key+'='+shlex.quote(value),text)
-                require(count==1,'Expected exactly one '+key+' in private profile.')
+                require(count<=1,'Duplicate '+key+' in private profile.')
+                if count==0:text=text.rstrip()+'\n'+key+'='+shlex.quote(value)+'\n'
             temp=path.with_name(path.name+'.tmp-'+secrets.token_hex(4))
             fd=os.open(temp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
             with os.fdopen(fd,'w') as stream:stream.write(text)
