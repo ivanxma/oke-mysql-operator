@@ -31,6 +31,7 @@ class VerifierTests(unittest.TestCase):
  def test_native_stream_grants_only_fresh_namespace_and_cleans_owned_binding(self):
   with tempfile.TemporaryDirectory() as tmp:
    w=N(state=Path(tmp),version='0.24.2',bin=Path(tmp)/'subctl',env={'SUBMARINER_TARGET_ID':'target','SUBMARINER_PEER_ID':'peer'})
+   (Path(tmp)/'clusters.json').write_text(json.dumps({'target':dict(uid='target-uid',id='target'),'peer':dict(uid='peer-uid',id='peer')}))
    w.selection=lambda peer: (['oc','--kubeconfig','peer' if peer else 'target'],Path(tmp)/('peer' if peer else 'target'),'same-context')
    role={'metadata':{'name':m.ROLE},'rules':[dict(apiGroups=['security.openshift.io'],resources=['securitycontextconstraints'],resourceNames=['nonroot-v2'],verbs=['use'])]}
    w.read=Mock(side_effect=[role,role])
@@ -48,6 +49,7 @@ class VerifierTests(unittest.TestCase):
  def test_completed_namespace_does_not_abort_native_suite_or_receive_grant(self):
   with tempfile.TemporaryDirectory() as tmp:
    w=N(state=Path(tmp),version='0.24.2',bin=Path(tmp)/'subctl',env={'SUBMARINER_TARGET_ID':'target','SUBMARINER_PEER_ID':'peer'})
+   (Path(tmp)/'clusters.json').write_text(json.dumps({'target':dict(uid='target-uid',id='target'),'peer':dict(uid='peer-uid',id='peer')}))
    w.selection=lambda peer: (['oc'],Path(tmp)/('peer' if peer else 'target'),'context')
    role={'metadata':{'name':m.ROLE},'rules':[dict(apiGroups=['security.openshift.io'],resources=['securitycontextconstraints'],resourceNames=['nonroot-v2'],verbs=['use'])]}
    w.read=Mock(side_effect=[role,role]);now=datetime.datetime.now(datetime.timezone.utc).isoformat()

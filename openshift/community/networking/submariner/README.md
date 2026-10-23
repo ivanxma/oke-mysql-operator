@@ -16,9 +16,9 @@ for private configuration, network prerequisites and the exact command order.
 | 03 | Explicitly label the selected worker gateway. |
 | 04 | Deploy the London broker. |
 | 05 | Join London. |
-| 06 | Inspect status. |
+| 06 | Inspect status or wait for gateway rollout and private peer connections. |
 | 07 | Explicitly enroll the peer when approved. |
-| 08 | Verify connectivity and discovery. |
+| 08 | Verify connectivity/discovery, then check the report and cleanup. |
 | 09 | Gather private diagnostics. |
 
 A single enrolled cluster cannot demonstrate a remote tunnel. Actual credentials,
@@ -51,3 +51,20 @@ profile with `02-register-peer.sh --peer-region eu-frankfurt-1`. Then preview/ap
 [peer phase](docs/workflow.md#phase-2--enroll-the-peer-only-when-ready) to review
 paths, join the peer and test connectivity. Live values are discovered from the
 selected generated profiles.
+
+For a fresh peer installation, use this order after peer discovery:
+
+```bash
+./03-prepare-gateway-network.sh --apply
+./03-verify-gateway-paths.sh
+./02-register-peer.sh --peer-region eu-frankfurt-1 --record-reviewed-network
+./02-validate-environment.sh
+./07-join-peer.sh
+./06-wait-for-mesh.sh --timeout 600
+./08-verify-connectivity.sh
+./08-check-verification.sh
+```
+
+Path probes and readiness/report checks change no cluster/OCI resources; they
+save private evidence. Step 08 verification creates temporary test resources.
+For an existing joined pair, resume at the readiness check; do not rerun join.

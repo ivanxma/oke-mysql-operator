@@ -141,6 +141,7 @@ From the generated London networking folder:
 ./02-register-peer.sh --peer-region eu-frankfurt-1
 ./03-prepare-gateway-network.sh          # Read-only preview
 ./03-prepare-gateway-network.sh --apply  # Dedicated gateway NSGs only
+./03-verify-gateway-paths.sh             # Read-only SSH/route/ping/TLS probes
 ```
 
 Step 02 registers the peer kubeconfig/API, unique cluster ID, machine CIDR and
@@ -166,8 +167,10 @@ is not proof of packet delivery. Then explicitly record the review and enroll:
 ./02-register-peer.sh --peer-region eu-frankfurt-1 --record-reviewed-network
 ./02-validate-environment.sh
 ./07-join-peer.sh
+./06-wait-for-mesh.sh --timeout 600 --interval 15
 ./06-show-status.sh
 ./08-verify-connectivity.sh
+./08-check-verification.sh
 ```
 
 The registration writes actual selections to private optional configuration and
@@ -238,3 +241,38 @@ References: [upstream prerequisites](https://submariner.io/getting-started/),
 [usage and service discovery](https://submariner.io/operations/usage/),
 [release assets](https://github.com/submariner-io/releases/releases/tag/v0.24.2),
 [known issues](https://submariner.io/operations/known-issues/).
+
+## Repeatable path, rollout and evidence checks
+
+`03-verify-gateway-paths.sh` repeats the preparation probes using discovered
+worker addresses and generated regional SSH state. It first checks live OCI
+VM/image/compartment bindings and existing DRG routes without changing them,
+then verifies SSH instance metadata/hostname, the private route, three DF pings
+with 1400-byte payloads, and broker HTTPS using the configured API CA. It sends
+no administrative credentials to the workers. HTTP 401/403 establishes a reached
+authorization endpoint; it is not proof of administrative access. This is a path
+check before join; UDP/ESP and workload traffic are verified after enrollment.
+
+`06-wait-for-mesh.sh` gives elapsed time and component/gateway status until local
+readiness or both gateways are active and connected to the expected private peer
+IP and cluster ID. The wait is bounded and never rejoins or restarts components.
+Use `--timeout` and `--interval` to set polling limits. A timeout leaves deployment
+running; diagnose or resume the wait rather than reinstalling.
+
+`08-check-verification.sh` checks the latest run's JUnit report against its start
+time and recorded cluster UIDs. It distinguishes skipped specs from failures,
+requires passing tests and zero suite/test errors, and checks that run-owned test
+namespaces and temporary SCC RoleBindings are gone on both clusters. It writes
+`verification-check.json` privately and makes no cluster changes. A new test run
+archives the previous XML and binds its receipt to both cluster identities, so a
+previous passing report cannot satisfy a failed or incomplete rerun. Older
+receipts without this binding stay as historical evidence; rerun step 08 for new
+acceptance. The report check establishes recorded-test and current-cleanup status;
+step 06 supplies current gateway readiness.
+
+Manual prerequisites remain: approved compartment IAM, shared DRG/DNS routing
+where required, manual OCI VM launches from the imported cluster-specific images,
+and the explicit network-review acknowledgement. Discovery and probes replace
+manual copying of addresses and IDs; they do not silently change IAM or shared
+networking. The automated recipe is for the supported two-region lab; gateway HA
+and disruptive failover tests need a separate maintenance plan.

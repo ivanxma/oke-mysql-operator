@@ -48,8 +48,15 @@ def verify(w):
     args=[str(w.bin),'verify','--only','connectivity,service-discovery','--disruptive-tests=false','--verbose',
           '--junit-report',str(w.state/'verify.xml'),'--kubeconfig',str(target['path']),'--context',target['context'],
           '--toconfig',str(peer['path']),'--tocontext',peer['context']]
+    scope=json.loads((w.state/'clusters.json').read_text())
+    clusters={role:dict(uid=scope[role]['uid'],id=scope[role]['id']) for role in ('target','peer')}
+    require(clusters['target']['id']==w.env['SUBMARINER_TARGET_ID'] and clusters['peer']['id']==w.env['SUBMARINER_PEER_ID'],'Verifier cluster receipt differs from selection.')
+    previous=w.state/'verify.xml'
+    if previous.exists():
+        require(not previous.is_symlink(),'Refusing symlink verification report.')
+        previous.replace(w.state/('verify-previous-'+run_id+'.xml'))
     recorded={};granted=[];process=None
-    def persist():private_write(w.state/'verifier-run.json',dict(run_id=run_id,started_at=started.isoformat(),namespaces=recorded))
+    def persist():private_write(w.state/'verifier-run.json',dict(run_id=run_id,started_at=started.isoformat(),clusters=clusters,namespaces=recorded))
     persist()
     try:
         process=subprocess.Popen(args,cwd=w.state,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
