@@ -187,6 +187,11 @@ unset node_ip
 ./06-check-control-plane.sh
 ./11-verify-web-access.sh
 
+If monitoring repeatedly fails: ./05-diagnose-control-plane.sh (read-only).
+For a confirmed latest controller-manager installer API-timeout failure only:
+./05-recover-controller-manager.sh (preview; see docs/operations.md).
+Recovery is conditional, not a required installation step.
+
 For direct oc commands only: source ./00-env.sh
 Do not repeat completed steps just because launchers were generated.
 The generated files remain private; the shared implementation stays in the clone.

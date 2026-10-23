@@ -82,6 +82,7 @@ def snapshot(oc, env, domain, address):
         if rc:
             emit('WAITING: cannot read '+resource+' — '+(error.strip() or 'request failed').splitlines()[0][:240])
             emit('API readyz passed, but resource inspection failed; cluster completion is NOT confirmed.')
+            emit('If this repeats, run 05-diagnose-control-plane.sh for read-only bootstrap evidence before attempting recovery.')
             return False
         try:
             data.append(json.loads(output)['items'])

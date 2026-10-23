@@ -107,6 +107,11 @@ Require **`RESULT: INSTALLER COMPLETED`**, then steps 06 and 11 to pass.
 `--status-only` takes one snapshot; returning to the shell is not completion.
 To resume later, return to the generated folder and run the next unfinished step.
 
+If API requests time out or operators stop progressing, run
+`./05-diagnose-control-plane.sh` (read-only). Follow the
+[bootstrap diagnostic and recovery sequence](docs/operations.md#bootstrap-api-and-installer-diagnostics).
+Do not rebuild the image to retry monitoring.
+
 ## Details and optional work
 
 - [Generated folder and configuration options](docs/configuration.md)

@@ -145,6 +145,84 @@ installer ISO, and requires typing `DELETE`. It deletes only that generated ISO.
 Base ISO, cloud image/object, credentials and receipts remain. Do not rerun
 build/import merely to monitor an installed cluster after cleanup.
 
+## Bootstrap API and installer diagnostics
+
+Run these commands from the generated execution folder after DNS and environment
+validation. Existing checkouts need `git pull` and, for new launchers, a rerun of
+`00-create-workspace.sh` from the repository root with the original region and
+deployment name/options. This preserves private configuration and installer state.
+
+**Jump host · read-only installation monitoring**
+
+```bash
+./05-wait-for-control-plane.sh
+```
+
+A successful `/readyz` does not prove authenticated node queries or all operators
+are ready. If resource requests repeatedly time out, stop the monitor with Ctrl-C.
+Stopping it does not stop installation. Do not repeat image generation or import.
+
+**Jump host · read-only diagnostic collection**
+
+```bash
+./05-diagnose-control-plane.sh
+```
+
+The script validates the selected kubeconfig/API, workspace domain and single
+node's private address. It queries readiness, the authenticated node API, cluster
+operators, aggregated API registration and controller-manager installer revisions.
+Each request has a 20s timeout with a 35s command limit. It saves a protected JSON
+report under the selected admin workspace's `diagnostics/` directory; reports are
+private and must not be committed. Exit 0 means evidence collection completed,
+not that installation completed. API failures produce a nonzero exit.
+
+Focus on operator Available/Progressing/Degraded conditions, missing aggregated
+API CA bundles, and whether a failed installer belongs to the latest revision.
+Old failed installer pods can remain after a newer revision succeeds. A localhost
+HTTP 403 without credentials only proves the API answered an unauthenticated
+request. Compare authenticated direct/tunneled results before changing networking.
+Bootstrap API replacement can interrupt requests and delay other controllers;
+healthy operators and advancing revisions afterward indicate reconciliation.
+
+**Jump host · conditional controller-manager recovery preview**
+
+```bash
+./05-recover-controller-manager.sh
+```
+
+Use this only for a latest controller-manager installer that failed with an API
+timeout after API access has recovered. A healthy API, Ready matching single node,
+Managed controller-manager, and Available/non-Degraded API and etcd operators are
+required. A Running, Pending or completed latest installer is not restarted.
+If the current revision has already caught up, this is a no-op. Other failure
+types are refused. A previous scripted rollout blocks repeated recovery attempts.
+
+**Jump host · conditional cluster change, only after an eligible preview**
+
+```bash
+./05-recover-controller-manager.sh --apply
+```
+
+This requests a new controller-manager revision through its
+`spec.forceRedeploymentReason`, guarded by the resource version checked during
+diagnosis. It does not patch certificates, disable TLS, restart the VM or change
+networking. It can restart the controller-manager during its rollout. Existing
+API-server and etcd configurations are not patched. Keep the private evidence
+report and stop on a failed guard; do not bypass the checks.
+
+**Jump host · read-only completion and acceptance**
+
+```bash
+./05-wait-for-control-plane.sh
+./06-check-control-plane.sh
+./11-verify-web-access.sh
+```
+
+Wait for `RESULT: INSTALLER COMPLETED`, then require acceptance checks to pass.
+See the [controller-manager operator API](https://docs.okd.io/4.21/rest_api/operator_apis/kubecontrollermanager-operator-openshift-io-v1.html)
+for the rollout field; its availability does not make every bootstrap failure
+eligible for recovery.
+
 ## Target host-key recovery
 
 The live installer and installed CoreOS can present different SSH host keys.
