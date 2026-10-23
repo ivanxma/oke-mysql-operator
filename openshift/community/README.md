@@ -124,21 +124,21 @@ Then, from the generated folder:
 
 ```bash
 read -r -p "New VM private IP: " node_ip
-read -r -p "Terminated previous VM instance OCID: " previous_instance
-./05-replace-terminated-target.sh "$node_ip" --previous-instance-id "$previous_instance"
-./05-replace-terminated-target.sh "$node_ip" --previous-instance-id "$previous_instance" --apply
-unset node_ip previous_instance
-./00-validate-environment.sh --existing-target
-./05-wait-for-control-plane.sh
-./06-check-control-plane.sh
-./11-verify-web-access.sh
+./05-replace-terminated-target.sh "$node_ip"                  # Read-only preview
+./05-replace-terminated-target.sh "$node_ip" --apply --complete
+unset node_ip
 ```
 
 The first command previews. `--apply` verifies both VMs, archives stale target
 state, registers the replacement, replaces old addresses at the three cluster DNS
-names and waits for DNS verification. It preserves other records, the zone and
+names, waits for DNS, then runs preflight, installation monitoring and acceptance.
+It preserves other records, the zone and
 image-bound auth files. If the installed OS changes its SSH host key, follow the
 host-key recovery step above, then rerun the replacement command safely.
+The previous VM is selected from verified private state. If that inventory is
+unavailable, supply `--previous-instance-id <terminated-instance-OCID>` once.
+Preflight warnings stop the completion flow for review; add
+`--allow-preflight-warnings` only after reviewing them. FAIL items always stop it.
 See [replacement details](docs/operations.md#replace-a-terminated-lab-control-plane).
 
 ## Details and optional work

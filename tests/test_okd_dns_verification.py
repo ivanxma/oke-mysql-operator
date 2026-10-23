@@ -96,6 +96,16 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(self.run_check(report,wait='5'),0)
             sleep.assert_called_once_with(1)
 
+    def test_permanent_ssh_error_stops_polling_with_recovery_action(self):
+        def report(c,d,e,r):
+            return self.report(r) if r=='ADMIN' else dict(role=r,checks=[],error='SSH host identity verification failed (exit 255)')
+        output=io.StringIO()
+        with patch.object(verify.time,'sleep') as sleep,contextlib.redirect_stdout(output):
+            self.assertEqual(self.run_check(report,wait='600'),1)
+        sleep.assert_not_called()
+        self.assertIn('05-refresh-target-host-key.sh --apply',output.getvalue())
+        self.assertIn('DNS polling cannot resolve',output.getvalue())
+
 class RemoteProbeTests(unittest.TestCase):
     def remote(self, result):
         with patch.object(verify.subprocess,'run',return_value=result):

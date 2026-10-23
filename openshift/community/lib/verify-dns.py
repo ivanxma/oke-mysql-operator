@@ -144,6 +144,11 @@ def run(config, domain, expected, wait_seconds, interval):
         if passed == 8 and not failed and not unchecked and not probe_errors:
             print('READY for full environment validation. DNS success alone does not prove cluster readiness.')
             return 0
+        permanent = ('SSH authentication denied', 'SSH host identity', 'Remote Python 3 is missing')
+        if any(any(reason in report.get('error', '') for reason in permanent) for report in reports):
+            print('STOPPED: SSH identity/authentication or Python needs correction; DNS polling cannot resolve this.')
+            print('For a confirmed target reinstall with a changed key: ./05-refresh-target-host-key.sh --apply, then rerun this check.')
+            return 1
         remaining = deadline-time.monotonic()
         if wait_seconds == 0 or remaining <= 0:
             print('NOT READY. Resolve probe errors separately from DNS failures; no changes were made.')

@@ -3,6 +3,9 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import os
+import subprocess
+import shutil
 from types import SimpleNamespace as Obj
 import unittest
 from unittest.mock import patch
@@ -102,6 +105,23 @@ class ReplacementTests(unittest.TestCase):
         module.archive_state(str(self.work), str(self.state), current, record)
         self.assertEqual(json.loads((self.state / 'verified-target.json').read_text())['instance_id'], 'new-instance')
 
+    def test_previous_instance_discovered_from_verified_private_inventory(self):
+        self.save(self.state / 'verified-target.json', dict(instance_id='old-instance',compartment_id='compartment-test',region='test-region'))
+        scope={k:self.scope[k] for k in ('admin_workdir','compartment_id','region','cluster_name','base_domain')}
+        self.assertEqual(module.previous_instance(str(self.state),'',scope,'192.0.2.30'),'old-instance')
+
+    def test_retry_loads_original_previous_instance_from_matching_receipt(self):
+        scope={k:self.scope[k] for k in ('admin_workdir','compartment_id','region','cluster_name','base_domain')}
+        self.save(self.state / 'target-replacement.json',dict(scope,node_ip='192.0.2.30',previous_instance_id='old-instance'))
+        self.save(self.state / 'verified-target.json',dict(instance_id='new-instance',compartment_id='compartment-test',region='test-region'))
+        self.assertEqual(module.previous_instance(str(self.state),'',scope,'192.0.2.30'),'old-instance')
+        self.assertEqual(module.previous_instance(str(self.state),'',scope,'192.0.2.40'),'new-instance')
+
+    def test_other_scope_receipt_is_not_used_for_automatic_selection(self):
+        scope={k:self.scope[k] for k in ('admin_workdir','compartment_id','region','cluster_name','base_domain')}
+        self.save(self.state / 'target-replacement.json',dict(scope,region='wrong-region',node_ip='192.0.2.30',previous_instance_id='old-instance'))
+        with self.assertRaises(ValueError):module.previous_instance(str(self.state),'',scope,'192.0.2.30')
+
     def test_same_address_replacement_still_archives_old_instance_state(self):
         same = dict(self.scope, node_ip='192.0.2.30')
         self.save(self.state / 'node-ip.json', same); self.save(self.work / 'oci-node-ip.json', same)
@@ -129,6 +149,76 @@ class ReplacementTests(unittest.TestCase):
         with self.assertRaises(ValueError): module.archive_state(str(self.work), str(self.state), current, record)
         self.assertTrue((self.state / 'node-ip.json').exists())
         self.assertEqual(external.read_text(), 'preserve')
+
+
+class CompletionSequenceTests(unittest.TestCase):
+    """Run the actual shell entry point against harmless step executables."""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve(); (self.root/'lib').mkdir()
+        self.log=self.root/'steps'
+        shutil.copy2(ROOT/'openshift/community/05-replace-terminated-target.sh',self.root/'05-replace-terminated-target.sh')
+        (self.root/'lib/common.sh').write_text('''COMMUNITY_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+fail() { echo "$*" >&2; exit 1; }
+load_config() { ADMIN_HOST=127.0.0.1; ADMIN_WORKDIR=$COMMUNITY_DIR; STATE_DIR=$COMMUNITY_DIR; OCI_COMPARTMENT_ID=synthetic; OCI_REGION=test-region; CLUSTER_NAME=test; BASE_DOMAIN=lab.test; MACHINE_CIDR=192.0.2.0/24; }
+''')
+        (self.root/'lib/replace-terminated-target.py').write_text('print("cloud verification stub")\n')
+        self.names=['05-register-node-ip.sh','01-prepare-host.sh','05-discover-dns-view.sh','05-configure-dns.sh',
+                    '05-verify-dns.sh','00-validate-environment.sh','05-wait-for-control-plane.sh',
+                    '05-diagnose-control-plane.sh','06-check-control-plane.sh','11-verify-web-access.sh']
+        for name in self.names:self.step(name,0)
+
+    def step(self,name,code):
+        (self.root/name).write_text('echo "'+name+' $*" >> "$STEP_LOG"\nexit '+str(code)+'\n')
+
+    def run_script(self,*flags):
+        return subprocess.run(['bash',str(self.root/'05-replace-terminated-target.sh'),'192.0.2.30',
+            '--previous-instance-id','ocid1.instance.synthetic',*flags],env=dict(os.environ,STEP_LOG=str(self.log)),capture_output=True,text=True)
+
+    def test_complete_runs_acceptance_only_after_successful_monitor(self):
+        result=self.run_script('--apply','--complete')
+        self.assertEqual(result.returncode,0,result.stderr)
+        steps=self.log.read_text()
+        self.assertLess(steps.index('05-wait-for-control-plane.sh'),steps.index('06-check-control-plane.sh'))
+        self.assertLess(steps.index('06-check-control-plane.sh'),steps.index('11-verify-web-access.sh'))
+        self.assertIn('COMPLETE:',result.stdout)
+
+    def test_failed_monitor_collects_evidence_without_acceptance_or_success_claim(self):
+        self.step('05-wait-for-control-plane.sh',124)
+        result=self.run_script('--apply','--complete')
+        self.assertEqual(result.returncode,124)
+        steps=self.log.read_text()
+        self.assertIn('05-diagnose-control-plane.sh --node-bootstrap',steps)
+        self.assertNotIn('06-check-control-plane.sh',steps)
+        self.assertNotIn('COMPLETE:',result.stdout)
+
+    def test_preflight_failure_cannot_be_acknowledged_as_warning(self):
+        self.step('00-validate-environment.sh',1)
+        result=self.run_script('--apply','--complete','--allow-preflight-warnings')
+        self.assertEqual(result.returncode,1)
+        self.assertNotIn('05-wait-for-control-plane.sh',self.log.read_text())
+
+    def test_preflight_warnings_require_explicit_acknowledgement(self):
+        self.step('00-validate-environment.sh',2)
+        result=self.run_script('--apply','--complete')
+        self.assertEqual(result.returncode,2)
+        self.assertNotIn('05-wait-for-control-plane.sh',self.log.read_text())
+        self.log.unlink()
+        result=self.run_script('--apply','--complete','--allow-preflight-warnings')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('external access remains unverified',result.stdout)
+
+    def test_preview_does_not_run_any_deployment_steps(self):
+        result=self.run_script()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_failed_acceptance_does_not_verify_console_or_claim_complete(self):
+        self.step('06-check-control-plane.sh',1)
+        result=self.run_script('--apply','--complete')
+        self.assertEqual(result.returncode,1)
+        self.assertNotIn('11-verify-web-access.sh',self.log.read_text())
+        self.assertNotIn('COMPLETE:',result.stdout)
 
 
 if __name__ == '__main__': unittest.main()

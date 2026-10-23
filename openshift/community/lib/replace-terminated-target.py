@@ -26,6 +26,26 @@ def read(path):
     return json.loads(path.read_text())
 
 
+def previous_instance(state, explicit, scope, address):
+    if explicit:
+        return explicit
+    root = safe_path(state)
+    receipt = root / 'target-replacement.json'
+    if receipt.exists():
+        saved = read(receipt)
+        if any(saved.get(k) != v for k, v in scope.items()):
+            raise ValueError('Saved replacement receipt belongs to another installation')
+        if saved.get('node_ip') == address:
+            return saved['previous_instance_id']
+    inventory = root / 'verified-target.json'
+    if inventory.exists():
+        saved = read(inventory)
+        if saved.get('compartment_id') != scope['compartment_id'] or saved.get('region') != scope['region']:
+            raise ValueError('Verified target inventory scope mismatch')
+        return saved['instance_id']
+    raise ValueError('No previous VM inventory. Supply --previous-instance-id once; it will be recorded for retries')
+
+
 def verify(work, state, cid, region, cluster, domain, machine, address, previous, compute, network, all_results):
     root, local = safe_path(work), safe_path(state)
     net = ipaddress.IPv4Network(machine)
@@ -99,7 +119,7 @@ def archive_state(work, state, current, record):
     history.mkdir(mode=0o700, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     destination = history / ('replaced-' + stamp)
-    candidates = [local / n for n in ('verified-target.json', 'node-ip.json', 'node-ip.env', 'installation-acceptance.json')]
+    candidates = [local / n for n in ('verified-target.json', 'node-ip.json', 'node-ip.env', 'installation-acceptance.json', 'target-replacement.json')]
     candidates += list(local.glob('validation-*.txt')) + list(local.glob('node-bootstrap-*.json'))
     candidates += [root / 'oci-node-ip.json', root / 'oci-node-ip.env', root / 'oci-dns-view.json', root / 'sno/.openshift_install.log']
     backups = [local / n for n in ('ssh_config', 'host.env', 'known_hosts')]
@@ -126,6 +146,8 @@ def main(args):
     if len(args) != 10 or args[-1] not in ('preview', 'apply'):
         raise ValueError('Invalid replacement arguments')
     work, state, cid, region, cluster, domain, machine, address, previous, action = args
+    scope = dict(admin_workdir=work, compartment_id=cid, region=region, cluster_name=cluster, base_domain=domain)
+    previous = previous_instance(state, previous, scope, address)
     import oci
     opts = dict(signer=oci.auth.signers.InstancePrincipalsSecurityTokenSigner(), timeout=(10, 30),
                 retry_strategy=oci.retry.NoneRetryStrategy())
@@ -137,6 +159,15 @@ def main(args):
     print('Plan: archive stale target receipts; register replacement; revalidate DNS view; replace only the three cluster A sets; verify both hosts.')
     if action == 'apply':
         archive_state(work, state, current, record)
+        receipt = Path(state) / 'target-replacement.json'
+        if receipt.is_symlink():
+            raise ValueError('Refusing symlink replacement receipt')
+        temporary = receipt.with_name(receipt.name + '.tmp-' + str(os.getpid()))
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(json.dumps(dict(scope, node_ip=address, previous_instance_id=previous,
+                                         instance_id=record['instance_id']), indent=2) + '\n')
+        temporary.replace(receipt)
 
 
 if __name__ == '__main__':

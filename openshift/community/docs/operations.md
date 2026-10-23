@@ -336,10 +336,13 @@ References: [private-zone negative caching](https://docs.oracle.com/en-us/iaas/C
 [OKD single-node monitoring](https://docs.okd.io/latest/installing/installing_sno/install-sno-installing-sno.html).
 ## Replace a terminated lab control plane
 
-Run `05-replace-terminated-target.sh <new-private-IP> --previous-instance-id
-<terminated-instance-OCID>` from the generated folder **on the existing jump
+Run `05-replace-terminated-target.sh <new-private-IP>` from the generated folder **on the existing jump
 host**. Preview is read-only. Add `--apply` after reviewing it. This path is a
 disposable lab reinstall, not recovery of data from the terminated cluster.
+The previous instance is loaded from verified private inventory or a matching
+replacement receipt. When unavailable, explicitly provide
+`--previous-instance-id <terminated-instance-OCID>` once. No cloud-wide guessing
+by instance display name is used.
 
 The script uses instance-principal authentication in the configured region and
 compartment. It requires the previous VM to be `TERMINATED` and the new private
@@ -370,6 +373,16 @@ as described below, then rerun replacement with the same arguments. A retry
 revalidates the cloud and keeps already-current registration/acceptance state.
 After DNS, run environment validation, the installer wait command and acceptance
 steps 06/11. No cluster readiness is inferred from DNS success.
+Alternatively add `--apply --complete` to run these steps in sequence with phase
+messages. Preflight exit 2 (warnings only) stops for review unless
+`--allow-preflight-warnings` is supplied. Failures always stop. A monitor failure
+collects read-only SSH/API evidence and returns its failure code; it never advances
+to acceptance or restarts services automatically. Completion is printed only after
+both cluster acceptance and console verification pass.
+
+DNS polling now stops immediately on host-key/authentication failures or missing
+remote Python, because waiting for DNS cannot fix those errors. Transient SSH
+refusals during reboot and DNS cache refresh still use the bounded polling window.
 
 The SSH bootstrap diagnostic labels unavailable/rotated logs as collection failures.
 A collector error is not evidence that etcd itself logged a fatal error.
