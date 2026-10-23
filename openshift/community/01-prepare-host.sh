@@ -122,4 +122,4 @@ printf 'No target packages, partitions or boot volumes were changed.\n'
 REMOTE
 printf 'SSH_USER=%q\nSSH_HOST=%q\nSSH_IDENTITY=%q\nTARGET_USER=%q\nTARGET_HOST=%q\n' \
  "$SSH_USER" "$SSH_HOST" "$SSH_IDENTITY" "$TARGET_USER" "$TARGET_HOST" > "$STATE_DIR/host.env"
-printf '\nNext: set BASE_DOMAIN in the private deployment config, then run ./02-create-bucket.sh and ./02-download-okd.sh\n'
+printf '\nNext, from your generated execution folder: ./02-create-bucket.sh, ./02-download-okd.sh and ./02-download-scos-image.sh\n'
