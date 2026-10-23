@@ -136,12 +136,29 @@ Read-only discovery:
 oc get csr
 ```
 
-Inspect each CSR identity before individually approving it. Approval changes
-cluster state. After intended workers join, update `EXPECTED_NODE_COUNT` in the
-private optional profile and repeat step 06. A VM pool may reference the imported
-worker image only after a successful individual-node test; pool scaling does not
-provide Machine API integration, CSR approval, draining or Kubernetes node cleanup.
-Workers do not add control-plane HA.
+For scripted enrollment of one manually provisioned worker, supply its actual IP:
+
+```bash
+read -r -p "Actual new worker private IP: " worker_ip
+./08-prepare-worker-network.sh --worker-ip "$worker_ip" --apply
+./13-register-worker.sh "$worker_ip"                   # Read-only preview
+./13-register-worker.sh "$worker_ip" --approve          # Sign matching CSRs and wait
+unset worker_ip
+./06-check-control-plane.sh
+```
+
+Step 13 verifies the running private OCI VM uses this cluster's worker image and
+node NSG, checks SSH/instance metadata and hostname, and approves only matching
+kubelet bootstrap/serving CSRs. It checks requestor, signer, subject groups, usages,
+creation time and serving SANs; it never bulk-approves pending CSRs. Ready worker
+registration raises the expected node count through private state loaded by the
+shared environment. Source the generated `00-env.sh` for direct CLI commands.
+If the worker has undergone a verified reinstall and its host key changed, rerun
+with `--approve --refresh-host-key`; only that worker's saved entry is refreshed.
+
+A VM pool may reference the imported worker image only after a successful
+individual-node test; pool scaling does not provide Machine API integration,
+draining or Kubernetes node cleanup. Workers do not add control-plane HA.
 
 Base installation does not install persistent storage, MySQL or Submariner.
 Configure a suitable CSI/storage layer before stateful workloads. See the

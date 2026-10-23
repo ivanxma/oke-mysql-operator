@@ -119,7 +119,7 @@ def archive_state(work, state, current, record):
     history.mkdir(mode=0o700, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     destination = history / ('replaced-' + stamp)
-    candidates = [local / n for n in ('verified-target.json', 'node-ip.json', 'node-ip.env', 'installation-acceptance.json', 'target-replacement.json')]
+    candidates = [local / n for n in ('verified-target.json', 'node-ip.json', 'node-ip.env', 'installation-acceptance.json', 'target-replacement.json', 'worker-nodes.json', 'worker-nodes.env')]
     candidates += list(local.glob('validation-*.txt')) + list(local.glob('node-bootstrap-*.json'))
     candidates += [root / 'oci-node-ip.json', root / 'oci-node-ip.env', root / 'oci-dns-view.json', root / 'sno/.openshift_install.log']
     backups = [local / n for n in ('ssh_config', 'host.env', 'known_hosts')]

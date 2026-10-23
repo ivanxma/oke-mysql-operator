@@ -28,6 +28,9 @@ _region_load() (
   if [[ -f $OKD_STATE_DIR/node-ip.env ]]; then
     source "$OKD_STATE_DIR/node-ip.env" || return 1
   fi
+  if [[ -f $OKD_STATE_DIR/worker-nodes.env ]]; then
+    source "$OKD_STATE_DIR/worker-nodes.env" || return 1
+  fi
   KUBECONFIG=${KUBECONFIG:-$ADMIN_WORKDIR/sno/auth/kubeconfig}
   MYSQL_OPENSHIFT_CONFIG=${MYSQL_OPENSHIFT_CONFIG:-$ADMIN_WORKDIR/internal_doc/mysql-operator/config.env}
   MYSQL_STATE_DIR=${MYSQL_STATE_DIR:-$ADMIN_WORKDIR/internal_doc/mysql-operator}

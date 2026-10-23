@@ -34,6 +34,9 @@ fi
 if [[ -f $OKD_STATE_DIR/node-ip.env ]]; then
   source "$OKD_STATE_DIR/node-ip.env" || { return 1 2>/dev/null || exit 1; }
 fi
+if [[ -f $OKD_STATE_DIR/worker-nodes.env ]]; then
+  source "$OKD_STATE_DIR/worker-nodes.env" || { return 1 2>/dev/null || exit 1; }
+fi
 export ADMIN_WORKDIR
 export KUBECONFIG=${KUBECONFIG:-$ADMIN_WORKDIR/sno/auth/kubeconfig}
 export PATH="$ADMIN_WORKDIR/bin:$PATH"
