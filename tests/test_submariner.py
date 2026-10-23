@@ -59,6 +59,17 @@ class SubmarinerTests(unittest.TestCase):
         self.assertNotIn('=false',config.read_text())
         self.assertEqual(json.loads((self.w.state/'prerequisite-review.json').read_text())['cluster_uid'],'target-uid')
 
+    def test_broker_created_operator_can_be_used_for_first_local_join_only(self):
+        ns={'metadata':{'uid':'operator-namespace'}}
+        deployment={'spec':{'template':{'spec':{'containers':[{'image':'quay.io/submariner/submariner-operator:0.24.2'}]}}}}
+        owner=module.broker_operator_reusable({'uid':'target-uid'},'target-uid',ns,deployment,{'items':[]},'0.24.2')
+        self.assertEqual(owner['operator_namespace_uid'],'operator-namespace')
+        for extra in [dict(peer=True)]:
+            with self.assertRaises(ValueError):module.broker_operator_reusable(owner,'target-uid',ns,deployment,{'items':[]},'0.24.2',**extra)
+        with self.assertRaises(ValueError):module.broker_operator_reusable(owner,'target-uid',ns,deployment,{'items':[{}]},'0.24.2')
+        with self.assertRaises(ValueError):module.broker_operator_reusable(owner,'other-uid',ns,deployment,{'items':[]},'0.24.2')
+        with self.assertRaises(ValueError):module.broker_operator_reusable(owner,'target-uid',{'metadata':{'uid':'changed'}},deployment,{'items':[]},'0.24.2')
+
     def test_download_checksum_mismatch_refused_before_binary_execution(self):
         import io
         import types

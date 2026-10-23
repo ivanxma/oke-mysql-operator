@@ -32,6 +32,17 @@ def run(args, data=None):
     return subprocess.check_output(args,input=data,text=True,stderr=None)
 
 
+def broker_operator_reusable(owner, uid, namespace, deployment, resources, version, peer=False):
+    require(not peer and owner.get('uid')==uid,'Existing operator is not the owned local broker operator.')
+    require(not resources.get('items'),'Submariner resources already exist; inspect status instead of joining again.')
+    require(not owner.get('operator_namespace_uid') or owner['operator_namespace_uid']==namespace['metadata']['uid'],
+            'Broker operator namespace identity changed.')
+    images=[c.get('image','') for c in deployment['spec']['template']['spec']['containers']]
+    require(any(image in ('quay.io/submariner/submariner-operator:'+version,'quay.io/submariner/submariner-operator:v'+version) for image in images),
+            'Existing broker operator version differs from the pinned release; no automatic upgrade.')
+    return dict(uid=uid,operator_namespace_uid=namespace['metadata']['uid'],version=version)
+
+
 class Workflow:
     def __init__(self, env=None):
         self.env=dict(os.environ if env is None else env)
@@ -278,6 +289,17 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
                {'op':'add','path':'/metadata/labels/submariner.io~1gateway','value':'true'}]
         run(base+['patch','node',info['gateway'],'--type=json','-p',json.dumps(patch)])
 
+    def record_broker_operator(self, uid):
+        owner=json.loads((self.state/'broker-owner.json').read_text())
+        namespace=self.read(False,'get','namespace','submariner-operator')
+        deployment=self.read(False,'get','deployment','submariner-operator','-n','submariner-operator')
+        resources=self.read(False,'get','submariners.submariner.io','-n','submariner-operator')
+        # An already joined deployment is retained; this receipt is only needed for first join.
+        if resources.get('items'):
+            require(owner.get('uid')==uid,'Broker ownership mismatch');return
+        owner=broker_operator_reusable(owner,uid,namespace,deployment,resources,self.version)
+        private_write(self.state/'broker-owner.json',owner)
+
     def download(self):
         require(sys.platform.startswith('linux'),'Run Submariner scripts on the Linux admin host.')
         arch={'x86_64':'amd64','aarch64':'arm64'}.get(os.uname().machine)
@@ -329,6 +351,7 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
             if self.broker.exists():
                 require((self.state/'broker-owner.json').exists(),'Existing broker credentials have no ownership receipt; preserve and review manually.')
                 require(json.loads((self.state/'broker-owner.json').read_text())['uid']==info['target']['uid'],'Broker belongs to a different cluster.')
+                self.record_broker_operator(info['target']['uid'])
                 print('Existing London broker credentials retained.');return
             base,_,_=self.selection()
             existing=run(base+['get','namespace','submariner-k8s-broker','--ignore-not-found','-o','name']).strip()
@@ -337,6 +360,7 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
             require(self.broker.is_file(),'Broker command did not generate private credentials.')
             self.broker.chmod(0o600)
             private_write(self.state/'broker-owner.json',{'uid':info['target']['uid']})
+            self.record_broker_operator(info['target']['uid'])
         elif action in ('join','peer'):
             peer=action=='peer'
             if peer: self.peer_allowed()
@@ -345,7 +369,12 @@ exec bash "$repo/openshift/community/networking/submariner/'''+source.name+'''" 
             # Refuse automatic upgrades/re-joins of an existing network deployment.
             base,_,_=self.selection(peer)
             exists=run(base+['get','namespace','submariner-operator','--ignore-not-found','-o','name']).strip()
-            require(not exists,'Submariner operator namespace already exists; inspect status and preserve it. This script does not upgrade or reinstall.')
+            if exists:
+                require(not peer,'Peer operator namespace already exists; inspect without automatic rejoin/upgrade.')
+                self.record_broker_operator(info['target']['uid'])
+                resources=self.read(False,'get','submariners.submariner.io','-n','submariner-operator')
+                require(not resources.get('items'),'Submariner is already joined; use status/diagnostics instead of rejoining.')
+                print('Using the matching operator installed by the owned London broker; no upgrade or reinstall.',flush=True)
             if peer: self.label(True)
             side=info['peer' if peer else 'target']
             node=self.read(peer,'get','node',side['gateway'])
