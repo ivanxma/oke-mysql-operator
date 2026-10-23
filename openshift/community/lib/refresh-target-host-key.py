@@ -1,4 +1,4 @@
-"""Verify a console-supplied fingerprint before replacing one private SSH entry."""
+"""Reset one target's saved identity interactively, or pin a console fingerprint."""
 import ipaddress
 import os
 from pathlib import Path
@@ -13,12 +13,8 @@ def command(args, **kwargs):
     return subprocess.run(args, capture_output=True, text=True, timeout=45, **kwargs)
 
 
-def refresh(state, address, fingerprint, action):
+def ssh_state(state, address):
     ipaddress.IPv4Address(address)
-    if not re.fullmatch(r'SHA256:[A-Za-z0-9+/]{43}', fingerprint):
-        raise ValueError('Supply the SHA256 ED25519 fingerprint from the target OCI serial console')
-    if action not in ('preview', 'apply'):
-        raise ValueError('Expected preview/apply')
     state = Path(state)
     config, known = state/'ssh_config', state/'known_hosts'
     if state.is_symlink() or any(p.is_symlink() for p in (config, known)):
@@ -33,6 +29,49 @@ def refresh(state, address, fingerprint, action):
             fields.get('proxyjump') != 'okd-admin' or fields.get('hostkeyalias') or
             shlex.split(fields.get('userknownhostsfile', '')) != [str(known)]):
         raise ValueError('SSH state differs from selected target or expected step-01 layout; rerun step 01 --ssh-only')
+    return state, config, known
+
+
+def reset(state, address, action):
+    """Remove this target only, then let OpenSSH ask the operator to trust its key."""
+    if action not in ('preview','apply'):
+        raise ValueError('Expected preview/apply')
+    state, config, known = ssh_state(state,address)
+    print('Target: '+address,flush=True)
+    print('Recovery removes only this target from the private known_hosts file.',flush=True)
+    print('Accepting its replacement trusts the current connection without independent fingerprint verification.',flush=True)
+    if action == 'preview':
+        print('PREVIEW COMPLETE: no keys removed and no connection made. Run with --apply from an interactive terminal.')
+        return
+    if not sys.stdin.isatty():
+        raise ValueError('Run --apply in an interactive terminal to review and accept the replacement SSH key; no keys removed')
+    original = known.read_bytes()
+    with tempfile.TemporaryDirectory(prefix='.host-key-reset-',dir=state) as temp:
+        replacement = Path(temp)/'known_hosts'
+        replacement.write_bytes(original)
+        replacement.chmod(0o600)
+        command(['ssh-keygen','-R',address,'-f',str(replacement)],check=True)
+        if known.is_symlink() or known.read_bytes() != original:
+            raise ValueError('Saved host keys changed concurrently; no keys removed')
+        handle, backup = tempfile.mkstemp(prefix='known_hosts.backup-',dir=state)
+        with os.fdopen(handle,'wb') as output:
+            output.write(original)
+        os.replace(replacement,known)
+    print('Target entry removed. Backup: '+backup,flush=True)
+    print('Connecting now. Type yes only if you trust this is your intended target VM.',flush=True)
+    connection = subprocess.run(['ssh','-F',str(config),'-o','StrictHostKeyChecking=ask',
+                                 '-o','BatchMode=no','-o','UpdateHostKeys=no','okd-target','true'])
+    if connection.returncode:
+        raise ValueError('Reconnect failed or replacement key was declined. Target entry was removed; backup retained. Check SSH output before retrying')
+    print('RECOVERY COMPLETE: target SSH authentication succeeded. NEXT: ./05-verify-dns.sh --wait 600',flush=True)
+
+
+def refresh(state, address, fingerprint, action):
+    if not re.fullmatch(r'SHA256:[A-Za-z0-9+/]{43}', fingerprint):
+        raise ValueError('Supply the SHA256 ED25519 fingerprint from the target OCI serial console')
+    if action not in ('preview', 'apply'):
+        raise ValueError('Expected preview/apply')
+    state, config, known = ssh_state(state,address)
     original = known.read_bytes()
     print('Checking target identity through the verified admin SSH connection...', flush=True)
     scan = command(['ssh','-F',str(config),'-o','StrictHostKeyChecking=yes','okd-admin',
@@ -88,7 +127,11 @@ def refresh(state, address, fingerprint, action):
 
 if __name__ == '__main__':
     try:
-        refresh(*sys.argv[1:])
+        state, address, fingerprint, action = sys.argv[1:]
+        if fingerprint:
+            refresh(state,address,fingerprint,action)
+        else:
+            reset(state,address,action)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         if isinstance(error, subprocess.SubprocessError):
             print('FAIL: SSH/key verification command failed or timed out; inspect access and saved SSH state.', file=sys.stderr)

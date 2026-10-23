@@ -149,45 +149,69 @@ build/import merely to monitor an installed cluster after cleanup.
 
 The live installer and installed CoreOS can present different SSH host keys.
 An IP reused by a replacement VM can also have a different key. Step 01 refreshes
-SSH settings but deliberately preserves saved identities. A changed key needs
-independent verification; DNS polling cannot fix it.
+connection settings but preserves saved identities. DNS polling cannot fix a
+changed SSH identity.
 
-For an existing checkout, run `git pull` from the repository root, then rerun
-`./openshift/community/00-create-workspace.sh --region <selected-region>` with
-the same deployment name/options used originally. This adds the new launcher to
-the existing private execution folder without repeating installation steps.
-Return to that folder. Stop any DNS poll with Ctrl-C.
+For an existing checkout, run `git pull` from the repository root. If the recovery
+launcher is missing, rerun `./openshift/community/00-create-workspace.sh --region
+<selected-region>` with the same deployment name/options used originally. Return
+to the generated execution folder. Stop any DNS poll with Ctrl-C.
 
-**Target VM · OCI serial console · read-only verification**
+Confirm the registered target IP belongs to your intended new VM. This method
+trusts the server reached at that address when you accept its replacement key;
+it does not independently verify its fingerprint. No console connection is needed.
+
+**Jump host · generated execution folder · read-only preview**
 
 ```bash
-sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+./05-refresh-target-host-key.sh
 ```
 
-Confirm this is the intended VM in the selected region/compartment. Obtain its
-ED25519 `SHA256:...` value through that console, not from the failing SSH session
-or an unverified network scan.
-
-**Jump host · generated execution folder · verification, then local state update**
+**Jump host · generated execution folder · local saved-key update and interactive SSH**
 
 ```bash
-read -r -p "Target ED25519 fingerprint from OCI serial console: " fingerprint
-./05-refresh-target-host-key.sh --fingerprint "$fingerprint"
-# Only after preview passes: back up known_hosts and update this target entry.
-./05-refresh-target-host-key.sh --fingerprint "$fingerprint" --apply
-unset fingerprint
+./05-refresh-target-host-key.sh --apply
+```
+
+The script backs up the private `known_hosts` file, removes only the registered
+target's entries, and reconnects using `StrictHostKeyChecking=ask`. Review the SSH
+prompt and type `yes` only if you trust the intended target. It never accepts a
+replacement automatically or disables host-key checking. Your private login key
+and other saved host identities remain unchanged. If connection fails or you
+decline, it reports failure; the target entry has been removed and the backup
+remains. Investigate the error before retrying.
+
+**Jump host · generated execution folder · read-only verification and monitoring**
+
+```bash
 ./05-verify-dns.sh --wait 600
 ./00-validate-environment.sh --existing-target
 ./05-wait-for-control-plane.sh
 ```
 
-Stop on any failure. The preview reads the target public key through the existing
-verified admin connection, checks the supplied fingerprint, and tests SSH with
-that exact key in temporary private state. It leaves saved identities unchanged.
-`--apply` repeats these checks, saves a protected backup under `OKD_STATE_DIR`,
-and replaces only the registered target's entries. Other saved host identities
-remain. It changes no VM, DNS, cluster or OCI resources and never disables host
-identity checking. A fingerprint mismatch stops recovery; investigate the VM/IP.
+Stop on each failure. Recovery changes no VM, DNS, cluster or OCI resources.
+
+### Optional independent fingerprint verification
+
+For stronger identity assurance, obtain the ED25519 fingerprint on the intended
+**target VM through its OCI serial console**:
+
+```bash
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+Then on the **jump host**, preview and apply with the console fingerprint:
+
+```bash
+read -r -p "Target ED25519 fingerprint from OCI console: " fingerprint
+./05-refresh-target-host-key.sh --fingerprint "$fingerprint"
+./05-refresh-target-host-key.sh --fingerprint "$fingerprint" --apply
+unset fingerprint
+```
+
+This optional mode checks the supplied fingerprint and authenticates with the
+pinned key before saving it. A mismatch stops recovery without replacing saved
+keys. Repeat DNS verification and environment validation afterward.
 
 ## Troubleshooting
 

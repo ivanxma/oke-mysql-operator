@@ -117,6 +117,55 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn(self.new,found)
         self.assertNotIn(self.old,found)
 
+    def reset(self, action='apply', terminal=True, exitcode=0):
+        real_run = subprocess.run
+        def run(args, **kwargs):
+            if args[0] == 'ssh':
+                self.assertIn('StrictHostKeyChecking=ask',args)
+                self.assertIn('BatchMode=no',args)
+                self.assertNotIn('StrictHostKeyChecking=no',args)
+                self.assertEqual(args[-2:],['okd-target','true'])
+                self.connection_attempted = True
+                return subprocess.CompletedProcess(args,exitcode)
+            return real_run(args,**kwargs)
+        self.connection_attempted = False
+        with patch.object(recovery,'command',side_effect=self.command), \
+                patch.object(recovery.sys.stdin,'isatty',return_value=terminal), \
+                patch.object(recovery.subprocess,'run',side_effect=run), \
+                contextlib.redirect_stdout(io.StringIO()):
+            recovery.reset(str(self.state),'192.0.2.20',action)
+
+    def test_reset_preview_does_not_remove_or_connect(self):
+        self.reset('preview')
+        self.assertEqual(self.known.read_text(),self.original)
+        self.assertFalse(self.connection_attempted)
+        self.assertFalse(list(self.state.glob('known_hosts.backup-*')))
+
+    def test_reset_removes_only_target_before_interactive_reconnect(self):
+        self.reset()
+        self.assertTrue(self.connection_attempted)
+        self.assertEqual(self.known.read_text(),'192.0.2.10 '+self.old+'\n')
+        backup = next(self.state.glob('known_hosts.backup-*'))
+        self.assertEqual(backup.read_text(),self.original)
+        self.assertEqual(backup.stat().st_mode & 0o777,0o600)
+
+    def test_reset_without_terminal_does_not_remove_keys(self):
+        with self.assertRaisesRegex(ValueError,'interactive terminal'):
+            self.reset(terminal=False)
+        self.assertEqual(self.known.read_text(),self.original)
+        self.assertFalse(self.connection_attempted)
+
+    def test_reset_reconnect_failure_explains_changed_state(self):
+        with self.assertRaisesRegex(ValueError,'Target entry was removed; backup retained'):
+            self.reset(exitcode=255)
+        self.assertEqual(next(self.state.glob('known_hosts.backup-*')).read_text(),self.original)
+
+    def test_reset_refuses_stale_target_before_removal(self):
+        self.wrong_target = True
+        with self.assertRaisesRegex(ValueError,'differs'):
+            self.reset()
+        self.assertEqual(self.known.read_text(),self.original)
+
 
 if __name__ == '__main__':
     unittest.main()
