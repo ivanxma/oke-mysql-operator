@@ -1,128 +1,56 @@
-# MySQL InnoDB Cluster on Kubernetes — Linux 9
+# MySQL Operator on OCI OKE and OpenShift OKD
 
-Numbered scripts install the official MySQL Operator and deploy MySQL InnoDB
-Clusters on an existing Kubernetes environment. The optional `oke2/` workflow
-adds a ClusterSet replica in a second OKE cluster.
+This repository has **two Kubernetes deployment paths**. Choose your platform
+first; each path has its own prerequisites, configuration and numbered scripts.
 
-Defaults: operator chart **2.3.0**, MySQL/Router **26.7.0**, Helm **v4.3.1**,
-three MySQL members, two Routers, and a **10Gi PVC request per member**.
+| Platform | Starting point | What the workflow does |
+| --- | --- | --- |
+| **OCI OKE** — OCI-managed Kubernetes | [OKE installation](docs/oke-installation.md) | Install MySQL Operator and MySQL InnoDB Cluster on an existing OKE cluster; optionally extend its ClusterSet to another OKE cluster. |
+| **OpenShift OKD** — community OpenShift on OCI Compute | [OKD installation](openshift/community/README.md) | Prepare and install an OKD cluster on Compute VMs, add workers, then deploy MySQL and optional cross-region networking. |
 
-## Community OKD on OCI
+## OCI OKE
 
-Use the [OKD installation guide](openshift/community/README.md) for the numbered
-workflow, [sample configuration](openshift/community/community.env.example) and
-[technical docs](openshift/community/docs/installation.md). Run step 00 on the
-jump host to generate a private execution folder, then run numbered installation
-scripts there. [Regional wrappers](openshift/community/regions/README.md) remain
-available for advanced orchestration. Runtime profiles and state stay in
-Git-ignored `generated/openshift/`; private documents remain in `internal_doc/`.
+Use the [OKE installation and prerequisites](docs/oke-installation.md).
+Run its numbered scripts from the clone root with the OKE configuration selected.
+The OKE cluster and worker infrastructure must already exist.
 
-For MySQL on that OKD cluster, use the numbered
-[OpenShift MySQL Operator and ClusterSet scripts](openshift/mysql-operator/README.md).
-They select labelled workers and keep database pods off the control plane.
+- [MySQL installation and same-OKE ClusterSet](docs/oke-installation.md)
+- [Second OKE cluster](oke2/README.md)
+- [OKE networking](docs/oke-networking.md)
+- [MySQL operations and troubleshooting for OKE](docs/technical-details.md)
 
-## Prerequisites
+## OpenShift OKD on OCI Compute
 
-- A Linux 9 administration host: Oracle Linux, RHEL, Rocky Linux, or AlmaLinux.
-  Run as your normal user with `sudo` available for package/Helm installation.
-- `kubectl` installed and connected to the intended cluster. Initial operator
-  installation requires permissions for CRDs and cluster RBAC.
-- Three Ready, uncordoned Linux amd64/arm64 workers without scheduling taints.
-  Each MySQL pod requests 600m CPU and 1152Mi memory; allow additional capacity
-  for init containers, Routers, the operator, and Kubernetes system pods.
-- A working CSI provisioner and StorageClass. Set `STORAGE_CLASS` in `config.env`
-  or provide one default class. OCI may provision **50Gi** for a 10Gi request;
-  size storage for the database's data and growth.
-- Working pod networking and DNS, including **UDP/TCP 53** between relevant
-  workers/pods. Permit MySQL member traffic and retain the OKE baseline rules.
-  See [network prerequisites and commands](docs/oke-networking.md).
-- Worker HTTPS access to `container-registry.oracle.com/mysql`; administration
-  host access to DNF repositories, `get.helm.sh`, and `mysql.github.io`.
+Start with the [OKD installation guide](openshift/community/README.md).
+Step 00 generates a private regional execution folder on the jump host; run the
+remaining OKD steps there. This is the community OKD workflow.
 
-Check the selected cluster before installing:
+After the OKD clusters are ready:
 
-```bash
-kubectl config current-context
-kubectl get nodes -o wide
-kubectl get storageclasses
-```
+- [Regional MySQL ClusterSet: one MySQL Operator per OKD cluster](openshift/community/mysql-operator/README.md)
+- [Submariner and Lighthouse: networking and DNS between independent OKD clusters](openshift/community/networking/submariner/README.md)
+- [Health checks after restarting one or both regions](openshift/community/docs/restart-health.md)
+- [OKD operations](openshift/community/docs/operations.md)
 
-## Install the first MySQL cluster
+The separate [same-cluster OKD MySQL workflow](openshift/mysql-operator/README.md)
+places primary and replica databases in different namespaces of one OKD cluster.
+Use the regional workflow above for databases in two independent OKD clusters.
 
-Run these commands from your repository checkout. Set `KUBE_CONTEXT` in
-`config.env` to pin installation to the intended Kubernetes cluster.
+## Repository layout
 
-```bash
-cd ~/mysqlk8s
-cp -n config.env.example config.env
-chmod 600 config.env
-vi config.env
-
-./00-install-mysqlsh.sh       # Optional host MySQL Shell, latest Innovation channel
-./01-install-prerequisites.sh
-./02-install-helm.sh
-./03-check-kubernetes.sh
-./04-install-mysql-operator.sh
-./05-create-mysql-cluster.sh
-./06-verify-mysql-cluster.sh
-```
-
-Stop if a step fails. Step 05 prompts for a root password of at least 12
-characters. Keep local configuration and password files out of source control.
-
-| Step | Purpose |
+| Location | Scope |
 | --- | --- |
-| 00 | Install/update host MySQL Shell through the official EL9 Yum repository. |
-| 01 | Install local utilities through DNF. |
-| 02 | Install the pinned Helm binary after checksum verification. |
-| 03 | Check Kubernetes readiness, placement, storage, and permissions. |
-| 04 | Install the pinned MySQL Operator Helm chart and wait for readiness. |
-| 05 | Create the namespace, root Secret, and MySQL cluster resource. |
-| 06 | Wait for all configured MySQL members and Routers to be ready. |
+| Root numbered scripts and `config.env.example` | MySQL deployment on OKE. |
+| `oke2/` | MySQL replica in a second OKE cluster. |
+| `openshift/community/` | OKD installation, regional profiles, workers and operations. |
+| `openshift/community/mysql-operator/` | MySQL ClusterSet across regional OKD clusters. |
+| `openshift/community/networking/submariner/` | Cross-cluster connectivity and service discovery for OKD. |
+| `openshift/mysql-operator/` | Two MySQL clusters within one OKD cluster. |
 
-Step 04 includes the Helm repository and chart commands. Step 05 creates the
-database through the operator's `InnoDBCluster` resource. The default target is
-`mysql/mycluster`.
+Defaults and configuration belong to the selected workflow. OKE's root
+`config.env` and OKD's generated regional profiles are separate.
+Keep real configuration, credentials and runtime state out of Git. New OKD
+execution state is generated under ignored `generated/openshift/`; private
+runbooks and deployment inventory remain under ignored `internal_doc/`.
 
-For a one-worker lab, set `MYSQL_INSTANCES=1` and `MYSQL_ROUTER_INSTANCES=1`
-before installation. This configuration cannot survive loss of that worker.
-
-## Add mycluster2 in the same Kubernetes cluster
-
-Complete the first installation, then run:
-
-```bash
-cd ~/mysqlk8s
-cp -n clusterset.env.example clusterset.env
-chmod 600 clusterset.env
-vi clusterset.env
-
-./11-check-clusterset.sh
-./12-create-replica-cluster.sh
-./13-verify-clusterset.sh
-```
-
-This adds `mysql-secondary/mycluster2` as a replica of the existing ClusterSet.
-The existing operator handles both namespaces. Allow capacity for three more
-MySQL members, two Routers, and three PVCs.
-
-## Add mycluster3 in OKE c2
-
-Use the [c2 installation guide](oke2/README.md). It configures
-`~/.kube/config2`, installs c2's own MySQL Operator, sets up cross-cluster DNS,
-and creates `mysql-tertiary/mycluster3` as a replica.
-
-Both OKE clusters must have working private pod connectivity before creating
-the replica. The [networking guide](docs/oke-networking.md) covers shared VCNs,
-same-region peering, and cross-region peering.
-
-## Documentation
-
-| Guide | Contents |
-| --- | --- |
-| [Technical details](docs/technical-details.md) | Architecture, configuration, credentials, ClusterSet behavior, scripts 31–33, MySQL Shell, SQL access, port forwarding, and troubleshooting. |
-| [OKE networking](docs/oke-networking.md) | OCI diagrams and commands for VCN/DRG/RPC routing, security rules, DNS, and connectivity checks. |
-| [OKE c2 technical details](docs/oke2-technical-details.md) | Kubeconfig isolation, wrapper commands, cluster3 DNS, reruns, and operational limits. |
-| [Documentation index](docs/README.md) | All guides and architecture diagrams. |
-
-Based on the [official MySQL Operator](https://github.com/mysql/mysql-operator).
+See the [documentation index](docs/README.md) for all public guides.

@@ -1,7 +1,11 @@
-# MySQL Operator and ClusterSet on OKD
+# MySQL ClusterSet within one OKD cluster
 
 Numbered scripts deploy the same Oracle MySQL Operator/ClusterSet model as the
 OKE workflow, adapted for OpenShift security and worker-only placement.
+
+Both database clusters run in separate namespaces of **one OKD cluster**.
+For primary and replica databases in independent regional OKD clusters, use the
+[regional OKD MySQL workflow](../community/mysql-operator/README.md).
 
 | Component | Namespace | Configuration |
 | --- | --- | --- |

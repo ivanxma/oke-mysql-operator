@@ -1,11 +1,11 @@
-# MySQL Operator: technical details
+# MySQL on OKE: technical details
 
 Addresses and resource names in this public reference are illustrative; live inventory is kept in ignored `internal_doc/`.
 
-See the [main README](../README.md) for prerequisites and installation.
+See the [OKE installation guide](oke-installation.md) for prerequisites and installation.
 This reference covers architecture, configuration behavior, credentials,
 ClusterSet replication, switchovers, SQL access, and troubleshooting.
-Run commands below from `~/mysqlk8s` unless a different directory is shown.
+Run commands below from the repository root unless a different directory is shown.
 
 - [Deployment architecture](#deployment-architecture)
 - [Ports and OCI security rules](#network-ports-and-oci-security-rules)

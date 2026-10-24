@@ -1,14 +1,31 @@
-# Documentation
+# Documentation by Kubernetes platform
 
-Installation and prerequisites: [main README](../README.md) and
-[c2 installation](../oke2/README.md).
+Choose [OCI OKE or OpenShift OKD](../README.md) before following installation
+steps. The two workflows have separate configuration and execution folders.
+
+## OCI OKE
 
 | Guide | Contents |
 | --- | --- |
-| [Community OKD on OCI](../openshift/community/README.md) | Clean SNO installation sequence, private custom-image import, validation and optional worker preparation. |
-| [Technical details](technical-details.md) | Deployment architecture, ports, configuration, credentials, ClusterSet behavior, switchovers, replication channels, SQL access, and troubleshooting. |
-| [OKE c2 technical details](oke2-technical-details.md) | Access isolation, wrappers, cluster3 DNS, bootstrap behavior, reruns, and operational scope. |
-| [Connecting two OKE clusters](oke-networking.md) | Shared VCN, same-region peering, and cross-region DRG/RPC peering, with OCI diagrams and explicit commands. |
+| [OKE installation](oke-installation.md) | Prerequisites, root-level numbered scripts, first MySQL cluster and same-OKE ClusterSet replica. |
+| [OKE MySQL technical details](technical-details.md) | Architecture, configuration, credentials, SQL access, replication, switchovers and troubleshooting. |
+| [Second OKE cluster](../oke2/README.md) | Separate cluster access, local MySQL Operator and cross-OKE replica installation. |
+| [OKE c2 technical details](oke2-technical-details.md) | Access isolation, wrappers, DNS, bootstrap behavior, reruns and operational scope. |
+| [Connecting OKE clusters](oke-networking.md) | Shared VCN, same-region peering and cross-region DRG/RPC networking. |
+
+## OpenShift OKD on OCI Compute
+
+| Guide | Contents |
+| --- | --- |
+| [OKD installation](../openshift/community/README.md) | Jump-host clone, generated regional folder, custom-image import, node installation and workers. |
+| [OKD prerequisites and implementation](../openshift/community/docs/installation.md) | Compute, storage, networking, DNS and IAM requirements. |
+| [Regional OKD MySQL ClusterSet](../openshift/community/mysql-operator/README.md) | One Operator per OKD cluster; primary and replica in separate regional clusters. |
+| [Submariner and Lighthouse](../openshift/community/networking/submariner/README.md) | Cross-cluster network connectivity and exported service DNS. |
+| [Restart health](../openshift/community/docs/restart-health.md) | Single-region and two-region restart checks, recovery and replication acceptance. |
+| [OKD operations](../openshift/community/docs/operations.md) | Cluster validation, CLI/browser access, workers and troubleshooting. |
+| [Same-cluster OKD MySQL](../openshift/mysql-operator/README.md) | Separate workflow for two database namespaces in one OKD cluster. |
+
+## OKE architecture diagrams
 
 Architecture sources and previews:
 
