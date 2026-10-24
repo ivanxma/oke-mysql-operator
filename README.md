@@ -28,6 +28,7 @@ remaining OKD steps there. This is the community OKD workflow.
 After the OKD clusters are ready:
 
 - [Regional MySQL ClusterSet: one MySQL Operator per OKD cluster](openshift/community/mysql-operator/README.md)
+- [Two-region MySQL demo video](openshift/community/demo/README.md)
 - [Submariner and Lighthouse: networking and DNS between independent OKD clusters](openshift/community/networking/submariner/README.md)
 - [Health checks after restarting one or both regions](openshift/community/docs/restart-health.md)
 - [OKD operations](openshift/community/docs/operations.md)

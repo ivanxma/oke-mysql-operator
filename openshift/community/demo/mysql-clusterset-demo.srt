@@ -1,0 +1,203 @@
+1
+00:00:00,000 --> 00:00:06,787
+This demonstration shows MySQL Cluster Set across independent community OpenShift clusters in London and Frankfurt. We first tour
+
+2
+00:00:06,787 --> 00:00:13,573
+the real consoles, with private fields masked. We then use an illustrative terminal replay to explain creation, replication,
+
+3
+00:00:13,573 --> 00:00:20,360
+and a controlled switch of the active writer.
+
+4
+00:00:20,360 --> 00:00:27,920
+This is the London OKD console. The MySQL Operator deployment lives in the mysql-operator namespace. This local controller
+
+5
+00:00:27,920 --> 00:00:35,480
+manages London database resources. It does not manage the Frankfurt Kubernetes API.
+
+6
+00:00:35,480 --> 00:00:43,740
+Frankfurt has its own MySQL Operator in a namespace with the same name. These are independent controllers. The
+
+7
+00:00:43,740 --> 00:00:52,000
+bridge between sites is MySQL Cluster Set replication over reachable database endpoints, rather than one shared Kubernetes controller.
+
+8
+00:00:52,000 --> 00:01:00,480
+The Submariner namespace contains its controller and Lighthouse deployments. Submariner gateways and route integration carry cross-cluster traffic. The
+
+9
+00:01:00,480 --> 00:01:08,960
+London broker exchanges endpoint and service metadata. It is not a relay for the MySQL data stream.
+
+10
+00:01:08,960 --> 00:01:15,000
+The Frankfurt console lists the active gateway resource. Its peer connection is checked separately through the Gateway status
+
+11
+00:01:15,000 --> 00:01:21,040
+and command line. The gateways use private routing between the regions. A connected tunnel alone does not prove
+
+12
+00:01:21,040 --> 00:01:27,080
+that Lighthouse service records are synchronized.
+
+13
+00:01:27,080 --> 00:01:33,400
+Lighthouse watches Service Exports, then exchanges Service Import and Endpoint Slice metadata through the broker. This London database
+
+14
+00:01:33,400 --> 00:01:39,720
+service is imported into Frankfurt. The source namespace must exist at the destination. Stable pod names include the
+
+15
+00:01:39,720 --> 00:01:46,040
+Submariner cluster identifier.
+
+16
+00:01:46,040 --> 00:01:52,693
+The OKD DNS Operator forwards the cluster set dot local suffix to the local Lighthouse DNS service. Lighthouse
+
+17
+00:01:52,693 --> 00:01:59,347
+builds those service answers from synchronized metadata. It does not manage the OCI private DNS zones for the
+
+18
+00:01:59,347 --> 00:02:06,000
+API, internal API, or application ingress routes.
+
+19
+00:02:06,000 --> 00:02:12,373
+We now move to the terminal replay. Prerequisites and protected root Secrets already exist. Each region has the
+
+20
+00:02:12,373 --> 00:02:18,747
+local database namespace, and an empty peer namespace for Lighthouse imports. Names and output in this walkthrough are
+
+21
+00:02:18,747 --> 00:02:25,120
+examples, not a recording of a new live installation.
+
+22
+00:02:25,120 --> 00:02:31,667
+Create the London InnoDB Cluster using its reviewed manifest. The local operator prepares the database and Router, then
+
+23
+00:02:31,667 --> 00:02:38,213
+the cluster becomes online. In this Operator workflow, the initial Cluster Set domain is created as part of
+
+24
+00:02:38,213 --> 00:02:44,760
+bootstrap. We read that existing domain from the center terminal.
+
+25
+00:02:44,760 --> 00:02:51,053
+The headless database service is explicitly exported. Lighthouse synchronizes it into the matching peer namespace. From a Frankfurt
+
+26
+00:02:51,053 --> 00:02:57,347
+pod, the qualified London member name resolves. The database manifest advertises that stable name, so remote MySQL members
+
+27
+00:02:57,347 --> 00:03:03,640
+can reach it as well.
+
+28
+00:03:03,640 --> 00:03:10,467
+The Frankfurt manifest uses init DB cluster Set with the primary database target and a local root Secret
+
+29
+00:03:10,467 --> 00:03:17,293
+reference. The Frankfurt sidecar invokes MySQL Admin API to create the replica cluster and configure its asynchronous channel.
+
+30
+00:03:17,293 --> 00:03:24,120
+The two Operators continue managing their own local Kubernetes resources.
+
+31
+00:03:24,120 --> 00:03:30,947
+Check each direct database member. London is writable, and Frankfurt has super read only enabled. Each single-member group
+
+32
+00:03:30,947 --> 00:03:37,773
+has a local primary member, but their global Cluster Set roles differ. A Router in Frankfurt may still
+
+33
+00:03:37,773 --> 00:03:44,600
+route to the global primary, so direct sessions are used for this verification.
+
+34
+00:03:44,600 --> 00:03:49,987
+In the replay, a demo row is written on the London primary and then read directly on the
+
+35
+00:03:49,987 --> 00:03:55,373
+Frankfurt replica. This checks database replication over the connected network. DNS success by itself would not prove that
+
+36
+00:03:55,373 --> 00:04:00,760
+the transaction arrived.
+
+37
+00:04:00,760 --> 00:04:07,107
+We next preview a planned switch of the active cluster to Frankfurt. The dry run verifies the Cluster
+
+38
+00:04:07,107 --> 00:04:13,453
+Set and target replica without changing roles. Both clusters must be reachable and transaction state must be suitable.
+
+39
+00:04:13,453 --> 00:04:19,800
+This is a controlled switchover, not emergency forced failover.
+
+40
+00:04:19,800 --> 00:04:26,373
+The replay now executes the planned switchover. MySQL Shell synchronizes the target, coordinates the role change, and updates
+
+41
+00:04:26,373 --> 00:04:32,947
+the managed replication topology. Router behavior follows Cluster Set metadata and routing policy. The left and right terminals
+
+42
+00:04:32,947 --> 00:04:39,520
+will now verify the resulting roles.
+
+43
+00:04:39,520 --> 00:04:45,467
+The final role checks are made against each direct database. Frankfurt is now the writable global primary. London
+
+44
+00:04:45,467 --> 00:04:51,413
+is read only and receives the managed asynchronous stream. ONLINE status must be retained at both sites, and
+
+45
+00:04:51,413 --> 00:04:57,360
+global Cluster Set health must be healthy.
+
+46
+00:04:57,360 --> 00:05:03,880
+A new transaction on Frankfurt is now read directly on London. This proves the new replication direction in
+
+47
+00:05:03,880 --> 00:05:10,400
+the instructional sequence. Keep the network path, service discovery, local reconciliation, and database replication checks separate when operating
+
+48
+00:05:10,400 --> 00:05:16,920
+the real deployment.
+
+49
+00:05:16,920 --> 00:05:25,533
+The console views in this video were captured read only from the existing deployment and redacted. Creation, SQL
+
+50
+00:05:25,533 --> 00:05:34,147
+writes, and the Frankfurt switchover were illustrative replay scenes, not live operations. Submariner carries the traffic. Lighthouse provides
+
+51
+00:05:34,147 --> 00:05:42,760
+service discovery. Each Operator reconciles locally. MySQL Cluster Set controls database replication and global roles.

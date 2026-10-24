@@ -1,0 +1,53 @@
+01. MySQL ClusterSet across two OKD clusters
+This demonstration shows MySQL Cluster Set across independent community OpenShift clusters in London and Frankfurt. We first tour the real consoles, with private fields masked. We then use an illustrative terminal replay to explain creation, replication, and a controlled switch of the active writer.
+
+02. London: local MySQL Operator
+This is the London OKD console. The MySQL Operator deployment lives in the mysql-operator namespace. This local controller manages London database resources. It does not manage the Frankfurt Kubernetes API.
+
+03. Frankfurt: a separate MySQL Operator
+Frankfurt has its own MySQL Operator in a namespace with the same name. These are independent controllers. The bridge between sites is MySQL Cluster Set replication over reachable database endpoints, rather than one shared Kubernetes controller.
+
+04. Submariner and Lighthouse workloads
+The Submariner namespace contains its controller and Lighthouse deployments. Submariner gateways and route integration carry cross-cluster traffic. The London broker exchanges endpoint and service metadata. It is not a relay for the MySQL data stream.
+
+05. Gateway state across regions
+The Frankfurt console lists the active gateway resource. Its peer connection is checked separately through the Gateway status and command line. The gateways use private routing between the regions. A connected tunnel alone does not prove that Lighthouse service records are synchronized.
+
+06. How Lighthouse exposes database names
+Lighthouse watches Service Exports, then exchanges Service Import and Endpoint Slice metadata through the broker. This London database service is imported into Frankfurt. The source namespace must exist at the destination. Stable pod names include the Submariner cluster identifier.
+
+07. Two different DNS responsibilities
+The OKD DNS Operator forwards the cluster set dot local suffix to the local Lighthouse DNS service. Lighthouse builds those service answers from synchronized metadata. It does not manage the OCI private DNS zones for the API, internal API, or application ingress routes.
+
+08. Creation walkthrough: prepare regional namespaces
+We now move to the terminal replay. Prerequisites and protected root Secrets already exist. Each region has the local database namespace, and an empty peer namespace for Lighthouse imports. Names and output in this walkthrough are examples, not a recording of a new live installation.
+
+09. Create cluster1 in London
+Create the London InnoDB Cluster using its reviewed manifest. The local operator prepares the database and Router, then the cluster becomes online. In this Operator workflow, the initial Cluster Set domain is created as part of bootstrap. We read that existing domain from the center terminal.
+
+10. Export member identity before joining the replica
+The headless database service is explicitly exported. Lighthouse synchronizes it into the matching peer namespace. From a Frankfurt pod, the qualified London member name resolves. The database manifest advertises that stable name, so remote MySQL members can reach it as well.
+
+11. Create cluster2 as the Frankfurt replica
+The Frankfurt manifest uses init DB cluster Set with the primary database target and a local root Secret reference. The Frankfurt sidecar invokes MySQL Admin API to create the replica cluster and configure its asynchronous channel. The two Operators continue managing their own local Kubernetes resources.
+
+12. Confirm roles using the direct database pods
+Check each direct database member. London is writable, and Frankfurt has super read only enabled. Each single-member group has a local primary member, but their global Cluster Set roles differ. A Router in Frankfurt may still route to the global primary, so direct sessions are used for this verification.
+
+13. Write in London, read in Frankfurt
+In the replay, a demo row is written on the London primary and then read directly on the Frankfurt replica. This checks database replication over the connected network. DNS success by itself would not prove that the transaction arrived.
+
+14. Preview the controlled switchover
+We next preview a planned switch of the active cluster to Frankfurt. The dry run verifies the Cluster Set and target replica without changing roles. Both clusters must be reachable and transaction state must be suitable. This is a controlled switchover, not emergency forced failover.
+
+15. Switch the active cluster to Frankfurt
+The replay now executes the planned switchover. MySQL Shell synchronizes the target, coordinates the role change, and updates the managed replication topology. Router behavior follows Cluster Set metadata and routing policy. The left and right terminals will now verify the resulting roles.
+
+16. Verify both regions after the role change
+The final role checks are made against each direct database. Frankfurt is now the writable global primary. London is read only and receives the managed asynchronous stream. ONLINE status must be retained at both sites, and global Cluster Set health must be healthy.
+
+17. Write in Frankfurt, read in London
+A new transaction on Frankfurt is now read directly on London. This proves the new replication direction in the instructional sequence. Keep the network path, service discovery, local reconciliation, and database replication checks separate when operating the real deployment.
+
+18. One system, four distinct responsibilities
+The console views in this video were captured read only from the existing deployment and redacted. Creation, SQL writes, and the Frankfurt switchover were illustrative replay scenes, not live operations. Submariner carries the traffic. Lighthouse provides service discovery. Each Operator reconciles locally. MySQL Cluster Set controls database replication and global roles.

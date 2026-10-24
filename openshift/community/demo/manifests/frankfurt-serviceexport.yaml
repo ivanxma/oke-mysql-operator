@@ -1,0 +1,5 @@
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: cluster2-instances
+  namespace: mysql-cluster2

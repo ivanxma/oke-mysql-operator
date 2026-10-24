@@ -1,0 +1,110 @@
+[
+  {
+    "start": 0,
+    "title": "MySQL ClusterSet across two OKD clusters",
+    "kind": "title",
+    "duration": 20.36
+  },
+  {
+    "start": 20.36,
+    "title": "London: local MySQL Operator",
+    "kind": "console",
+    "duration": 15.12
+  },
+  {
+    "start": 35.48,
+    "title": "Frankfurt: a separate MySQL Operator",
+    "kind": "console",
+    "duration": 16.52
+  },
+  {
+    "start": 52.0,
+    "title": "Submariner and Lighthouse workloads",
+    "kind": "console",
+    "duration": 16.96
+  },
+  {
+    "start": 68.96,
+    "title": "Gateway state across regions",
+    "kind": "console",
+    "duration": 18.12
+  },
+  {
+    "start": 87.08,
+    "title": "How Lighthouse exposes database names",
+    "kind": "console",
+    "duration": 18.96
+  },
+  {
+    "start": 106.04,
+    "title": "Two different DNS responsibilities",
+    "kind": "console",
+    "duration": 19.96
+  },
+  {
+    "start": 126.0,
+    "title": "Creation walkthrough: prepare regional namespaces",
+    "kind": "terminal",
+    "duration": 19.12
+  },
+  {
+    "start": 145.12,
+    "title": "Create cluster1 in London",
+    "kind": "terminal",
+    "duration": 19.64
+  },
+  {
+    "start": 164.76,
+    "title": "Export member identity before joining the replica",
+    "kind": "terminal",
+    "duration": 18.88
+  },
+  {
+    "start": 183.64,
+    "title": "Create cluster2 as the Frankfurt replica",
+    "kind": "terminal",
+    "duration": 20.48
+  },
+  {
+    "start": 204.12,
+    "title": "Confirm roles using the direct database pods",
+    "kind": "terminal",
+    "duration": 20.48
+  },
+  {
+    "start": 224.6,
+    "title": "Write in London, read in Frankfurt",
+    "kind": "terminal",
+    "duration": 16.16
+  },
+  {
+    "start": 240.76,
+    "title": "Preview the controlled switchover",
+    "kind": "terminal",
+    "duration": 19.04
+  },
+  {
+    "start": 259.8,
+    "title": "Switch the active cluster to Frankfurt",
+    "kind": "terminal",
+    "duration": 19.72
+  },
+  {
+    "start": 279.52,
+    "title": "Verify both regions after the role change",
+    "kind": "terminal",
+    "duration": 17.84
+  },
+  {
+    "start": 297.36,
+    "title": "Write in Frankfurt, read in London",
+    "kind": "terminal",
+    "duration": 19.56
+  },
+  {
+    "start": 316.92,
+    "title": "One system, four distinct responsibilities",
+    "kind": "summary",
+    "duration": 25.84
+  }
+]

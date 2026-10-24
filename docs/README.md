@@ -21,6 +21,7 @@ steps. The two workflows have separate configuration and execution folders.
 | [OKD prerequisites and implementation](../openshift/community/docs/installation.md) | Compute, storage, networking, DNS and IAM requirements. |
 | [Regional OKD MySQL ClusterSet](../openshift/community/mysql-operator/README.md) | One Operator per OKD cluster; primary and replica in separate regional clusters. |
 | [Submariner and Lighthouse](../openshift/community/networking/submariner/README.md) | Cross-cluster network connectivity and exported service DNS. |
+| [Two-region MySQL demo video](../openshift/community/demo/README.md) | Redacted OKD console tour and narrated creation/switchover terminal replay. |
 | [Restart health](../openshift/community/docs/restart-health.md) | Single-region and two-region restart checks, recovery and replication acceptance. |
 | [OKD operations](../openshift/community/docs/operations.md) | Cluster validation, CLI/browser access, workers and troubleshooting. |
 | [Same-cluster OKD MySQL](../openshift/mysql-operator/README.md) | Separate workflow for two database namespaces in one OKD cluster. |
