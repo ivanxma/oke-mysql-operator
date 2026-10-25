@@ -1,0 +1,60 @@
+name: Publish OKD demo video
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'openshift/community/demo/**'
+      - '.github/workflows/demo-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Stage public playback files only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          source = Path('openshift/community/demo')
+          output = Path('_site')
+          output.mkdir()
+          files = (
+              'index.html', 'mysql-clusterset-two-regions.mp4',
+              'mysql-clusterset-demo-poster.png', 'chapters.json',
+              'mysql-clusterset-demo.vtt', 'mysql-clusterset-demo.srt',
+              'transcript.txt',
+          )
+          for name in files:
+              path = source / name
+              if not path.is_file() or path.is_symlink():
+                  raise SystemExit('Missing or unsafe public playback asset: ' + name)
+              shutil.copy2(path, output / name)
+          (output / '.nojekyll').touch()
+          PY
+      - name: Upload playback site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Publish playback site
+        id: deployment
+        uses: actions/deploy-pages@v4

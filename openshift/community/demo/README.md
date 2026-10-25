@@ -1,9 +1,13 @@
 # Video: MySQL ClusterSet across London and Frankfurt OKD
 
-Watch [the narrated demo video](mysql-clusterset-two-regions.mp4), or open
-[the chapter player](index.html). [Captions](mysql-clusterset-demo.vtt) and a
-[transcript](transcript.txt) are included. The narrated MP4 is about **5 minutes
-43 seconds**, at **2880 × 1620**, with English captions.
+[**▶ Watch the demo video**](https://ivanxma.github.io/oke-mysql-operator/)
+
+[Play the MP4 directly in your browser](https://ivanxma.github.io/oke-mysql-operator/mysql-clusterset-two-regions.mp4)
+· [Captions](mysql-clusterset-demo.vtt) · [Transcript](transcript.txt)
+
+The playback page starts automatically, muted, with an **Enable narration**
+control. Browser settings may require selecting Play. No local HTTP server is
+needed. The narrated MP4 is about **5 minutes 43 seconds**, at **2880 × 1620**.
 
 **Recording mode:** real read-only OKD console captures with private fields
 masked, followed by a clearly labelled terminal replay with illustrative output.
@@ -30,14 +34,18 @@ cross-cluster traffic; each MySQL Operator reconciles local resources; MySQL
 ClusterSet manages asynchronous database replication and global roles.
 The one-member-per-region topology is a lab and has no local database redundancy.
 
-To use chapter navigation in a browser, serve this folder locally:
+For offline viewing from a clone, the optional local chapter player is:
 
 ```bash
 python3 03-serve-demo.py
 ```
 
-Open `http://127.0.0.1:8000/`. The local player supports chapter seeking.
-The MP4 can also be played or shared directly.
+Open `http://127.0.0.1:8000/`. Stop it with Ctrl-C when finished. The hosted
+links above work independently of this optional local server.
+
+The hosted player is published by the repository's `Publish OKD demo video`
+workflow to GitHub Pages. Its artifact contains only the public video, player,
+poster, captions, chapter index and transcript.
 
 ## Example commands and manifests
 
