@@ -7,7 +7,7 @@
 
 The playback page starts automatically, muted, with an **Enable narration**
 control. Browser settings may require selecting Play. No local HTTP server is
-needed. The narrated MP4 is about **5 minutes 43 seconds**, at **2880 × 1620**.
+needed. The MP4 uses AI narration generated from IvanMa’s own voice profile and is about **6 minutes 23 seconds**, at **2880 × 1620**.
 
 **Recording mode:** real read-only OKD console captures with private fields
 masked, followed by a clearly labelled terminal replay with illustrative output.

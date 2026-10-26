@@ -3,108 +3,108 @@
     "start": 0,
     "title": "MySQL ClusterSet across two OKD clusters",
     "kind": "title",
-    "duration": 20.36
+    "duration": 22.6
   },
   {
-    "start": 20.36,
+    "start": 22.6,
     "title": "London: local MySQL Operator",
     "kind": "console",
-    "duration": 15.12
+    "duration": 17.12
   },
   {
-    "start": 35.48,
+    "start": 39.72,
     "title": "Frankfurt: a separate MySQL Operator",
     "kind": "console",
-    "duration": 16.52
+    "duration": 20.6
   },
   {
-    "start": 52.0,
+    "start": 60.32,
     "title": "Submariner and Lighthouse workloads",
     "kind": "console",
-    "duration": 16.96
+    "duration": 19.84
   },
   {
-    "start": 68.96,
+    "start": 80.16,
     "title": "Gateway state across regions",
     "kind": "console",
-    "duration": 18.12
+    "duration": 19.44
   },
   {
-    "start": 87.08,
+    "start": 99.6,
     "title": "How Lighthouse exposes database names",
     "kind": "console",
-    "duration": 18.96
+    "duration": 20.28
   },
   {
-    "start": 106.04,
+    "start": 119.88,
     "title": "Two different DNS responsibilities",
     "kind": "console",
-    "duration": 19.96
+    "duration": 22.04
   },
   {
-    "start": 126.0,
+    "start": 141.92,
     "title": "Creation walkthrough: prepare regional namespaces",
     "kind": "terminal",
-    "duration": 19.12
+    "duration": 21.6
   },
   {
-    "start": 145.12,
+    "start": 163.52,
     "title": "Create cluster1 in London",
     "kind": "terminal",
-    "duration": 19.64
+    "duration": 21.44
   },
   {
-    "start": 164.76,
+    "start": 184.96,
     "title": "Export member identity before joining the replica",
+    "kind": "terminal",
+    "duration": 23.32
+  },
+  {
+    "start": 208.28,
+    "title": "Create cluster2 as the Frankfurt replica",
+    "kind": "terminal",
+    "duration": 23.6
+  },
+  {
+    "start": 231.88,
+    "title": "Confirm roles using the direct database pods",
+    "kind": "terminal",
+    "duration": 23.12
+  },
+  {
+    "start": 255.0,
+    "title": "Write in London, read in Frankfurt",
     "kind": "terminal",
     "duration": 18.88
   },
   {
-    "start": 183.64,
-    "title": "Create cluster2 as the Frankfurt replica",
-    "kind": "terminal",
-    "duration": 20.48
-  },
-  {
-    "start": 204.12,
-    "title": "Confirm roles using the direct database pods",
-    "kind": "terminal",
-    "duration": 20.48
-  },
-  {
-    "start": 224.6,
-    "title": "Write in London, read in Frankfurt",
-    "kind": "terminal",
-    "duration": 16.16
-  },
-  {
-    "start": 240.76,
+    "start": 273.88,
     "title": "Preview the controlled switchover",
     "kind": "terminal",
-    "duration": 19.04
+    "duration": 20.8
   },
   {
-    "start": 259.8,
+    "start": 294.68,
     "title": "Switch the active cluster to Frankfurt",
     "kind": "terminal",
-    "duration": 19.72
+    "duration": 23.04
   },
   {
-    "start": 279.52,
+    "start": 317.72,
     "title": "Verify both regions after the role change",
     "kind": "terminal",
-    "duration": 17.84
+    "duration": 19.92
   },
   {
-    "start": 297.36,
+    "start": 337.64,
     "title": "Write in Frankfurt, read in London",
     "kind": "terminal",
-    "duration": 19.56
+    "duration": 18.88
   },
   {
-    "start": 316.92,
+    "start": 356.52,
     "title": "One system, four distinct responsibilities",
     "kind": "summary",
-    "duration": 25.84
+    "duration": 26.8
   }
 ]
