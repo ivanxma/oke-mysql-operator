@@ -38,17 +38,17 @@ jobs:
           source = Path('openshift/community/demo')
           output = Path('_site')
           output.mkdir()
-          files = (
-              'index.html', 'mysql-clusterset-two-regions.mp4',
-              'mysql-clusterset-demo-poster.png', 'chapters.json',
-              'mysql-clusterset-demo.vtt', 'mysql-clusterset-demo.srt',
-              'transcript.txt',
+          name = 'mysql-clusterset-two-regions.mp4'
+          path = source / name
+          if not path.is_file() or path.is_symlink():
+              raise SystemExit('Missing or unsafe public video: ' + name)
+          shutil.copy2(path, output / name)
+          (output / 'index.html').write_text(
+              '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+              '<meta http-equiv="refresh" content="0;url=' + name + '">'
+              '<title>MySQL ClusterSet demo</title></head><body>'
+              '<a href="' + name + '">Watch the demo (MP4)</a></body></html>'
           )
-          for name in files:
-              path = source / name
-              if not path.is_file() or path.is_symlink():
-                  raise SystemExit('Missing or unsafe public playback asset: ' + name)
-              shutil.copy2(path, output / name)
           (output / '.nojekyll').touch()
           PY
       - name: Upload playback site

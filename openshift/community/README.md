@@ -144,7 +144,7 @@ See [replacement details](docs/operations.md#replace-a-terminated-lab-control-pl
 ## Details and optional work
 
 - [Generated folder and configuration options](docs/configuration.md)
-- [▶ Watch the two-region MySQL demo](https://ivanxma.github.io/oke-mysql-operator/) · [Demo notes](demo/README.md)
+- [▶ Watch the two-region MySQL demo (MP4)](demo/mysql-clusterset-two-regions.mp4)
 - [Restart health: one or both regions](docs/restart-health.md)
 - [Status, CLI/browser, workers, demo and ISO cleanup](docs/operations.md)
 - [Network diagram](docs/architecture.md)
